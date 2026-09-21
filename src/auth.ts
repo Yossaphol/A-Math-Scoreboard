@@ -18,28 +18,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     // is created on first login (see the signIn callback below).
     Google,
     // Dev-only fallback so this can be exercised locally without real Google OAuth
-    // credentials configured — see AUTH_GOOGLE_ID/SECRET in .env.
-    Credentials({
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      authorize: async (credentials) => {
-        const email = credentials?.email;
-        const password = credentials?.password;
-        if (typeof email !== "string" || typeof password !== "string") {
-          return null;
-        }
+    // credentials configured — see AUTH_GOOGLE_ID/SECRET in .env. Excluded entirely in
+    // production: prisma/seed.ts writes a password-login admin using a hardcoded dev
+    // password, and that must never be a reachable login path outside local dev, even if
+    // the seed script is ever accidentally run against a shared/production database.
+    ...(process.env.NODE_ENV === "production"
+      ? []
+      : [
+          Credentials({
+            credentials: {
+              email: { label: "Email", type: "email" },
+              password: { label: "Password", type: "password" },
+            },
+            authorize: async (credentials) => {
+              const email = credentials?.email;
+              const password = credentials?.password;
+              if (typeof email !== "string" || typeof password !== "string") {
+                return null;
+              }
 
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user?.passwordHash) return null;
+              const user = await prisma.user.findUnique({ where: { email } });
+              if (!user?.passwordHash) return null;
 
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
+              const valid = await bcrypt.compare(password, user.passwordHash);
+              if (!valid) return null;
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role };
-      },
-    }),
+              return { id: user.id, email: user.email, name: user.name, role: user.role };
+            },
+          }),
+        ]),
   ],
   callbacks: {
     async signIn({ user, account }) {
