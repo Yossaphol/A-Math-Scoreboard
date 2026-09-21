@@ -1,0 +1,293 @@
+// Tournament Score & Pairing System — data model
+// See tournament_score_pairing_uxui_spec_v2.md for the requirements this schema encodes.
+// Key rule (spec §8, §20): Maximum Score lives on Round, NEVER as a single Tournament-level value.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  USER
+}
+
+enum StaffStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum TournamentMode {
+  COMPETITION
+  PRACTICE
+}
+
+enum TournamentStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+}
+
+enum PlayerStatus {
+  ACTIVE
+  WITHDRAWN
+}
+
+enum PairingMethod {
+  RANDOM
+  SWISS
+  KING_OF_THE_HILL
+  ROUND_ROBIN
+}
+
+enum RoundStatus {
+  DRAFT // not generated yet
+  PREVIEW // generated, awaiting confirm
+  CONFIRMED // pairing locked, matches in progress
+  COMPLETED // all matches confirmed
+}
+
+enum MatchStatus {
+  PENDING // no score submitted yet
+  SUBMITTED // one side submitted
+  CONFLICT // both submitted but disagree
+  CONFIRMED // both sides agree, or admin finalized
+  BYE // no opponent, auto-confirmed
+}
+
+enum MatchOutcome {
+  WIN
+  TIE
+  LOSS
+}
+
+enum LinkRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String? // dev/mock credential login; Phase 3 adds Google OAuth alongside this
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  globalPlayer        GlobalPlayer?
+  staffAssignments    TournamentStaff[]
+  createdTournaments  Tournament[]      @relation("TournamentCreatedBy")
+  linkRequestsMade    LinkRequest[]     @relation("LinkRequestUser")
+  linkRequestsHandled LinkRequest[]     @relation("LinkRequestReviewer")
+  editedMatches       Match[]           @relation("MatchEditedByAdmin")
+}
+
+// Global Player ID — stable identity for a player across every tournament (spec §1).
+// A plain sequential number (not a cuid) so it reads as the human-facing ID it is.
+model GlobalPlayer {
+  // Random 6-digit ID (100000-999999), assigned in application code — see
+  // src/lib/global-player-id.ts. Not autoincrement, so it never reads as a plain sequence.
+  id        Int      @id
+  name      String
+  nickname  String?
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  tournamentPlayers TournamentPlayer[]
+  linkRequests      LinkRequest[]
+}
+
+// Approval workflow for binding a Google account to a Global Player (spec §4).
+model LinkRequest {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation("LinkRequestUser", fields: [userId], references: [id])
+  globalPlayerId Int
+  globalPlayer   GlobalPlayer      @relation(fields: [globalPlayerId], references: [id])
+  status         LinkRequestStatus @default(PENDING)
+  reviewedById   String?
+  reviewedBy     User?             @relation("LinkRequestReviewer", fields: [reviewedById], references: [id])
+  createdAt      DateTime          @default(now())
+  reviewedAt     DateTime?
+
+  @@index([status])
+}
+
+model Tournament {
+  id     String           @id @default(cuid())
+  name   String
+  mode   TournamentMode   @default(COMPETITION)
+  status TournamentStatus @default(UPCOMING)
+
+  // Player-count and game-count limits are independent toggles (spec §7) — never merge them.
+  setPlayerLimit   Boolean @default(true)
+  maxPlayers       Int?
+  setNumberOfGames Boolean @default(true)
+  numberOfGames    Int?
+
+  // First/Second is opt-in per tournament (spec §11).
+  useFirstSecond Boolean @default(true)
+
+  // Only a *default* seed for new Games — never a Tournament-wide cap (spec §8, §20).
+  defaultMaximumScore Int? @default(350)
+
+  // Practice-mode-only, optional soft privacy gate for the public /t/[id] pages — a random
+  // code so casual visitors can't browse someone else's practice history. Never set for
+  // COMPETITION (enforced in createTournament); Admin/Staff with access always bypass it.
+  pinCode String?
+
+  createdById String
+  createdBy   User     @relation("TournamentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  staff   TournamentStaff[]
+  players TournamentPlayer[]
+  rounds  Round[]
+  tables  TournamentTable[]
+
+  @@index([status])
+}
+
+// Staff ⇄ Tournament assignment (spec §5, §6, §20). Scope must be checked on every request.
+model TournamentStaff {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  tournamentId String
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  status       StaffStatus @default(ACTIVE)
+  assignedAt   DateTime    @default(now())
+
+  @@unique([userId, tournamentId])
+  @@index([tournamentId])
+}
+
+// Tournament Player ID — restarts at 1 for every tournament (spec §1).
+model TournamentPlayer {
+  id                 String       @id @default(cuid())
+  tournamentId       String
+  tournament         Tournament   @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  globalPlayerId     Int
+  globalPlayer       GlobalPlayer @relation(fields: [globalPlayerId], references: [id])
+  tournamentPlayerNo Int
+  status             PlayerStatus @default(ACTIVE)
+  createdAt          DateTime     @default(now())
+
+  matchesAsPlayer1 Match[] @relation("MatchPlayer1")
+  matchesAsPlayer2 Match[] @relation("MatchPlayer2")
+
+  // W/T/L, cumulative score/diff and First/Second totals are ALWAYS derived from confirmed
+  // Matches (spec §9.5) — intentionally not cached here to avoid a second source of truth.
+
+  @@unique([tournamentId, tournamentPlayerNo])
+  @@unique([tournamentId, globalPlayerId])
+  @@index([tournamentId, status])
+}
+
+// A Round groups the Games/Matches played in one pairing cycle.
+// Maximum Score is set here, per round — never Tournament-wide (spec §8, §10, §20).
+model Round {
+  id            String         @id @default(cuid())
+  tournamentId  String
+  tournament    Tournament     @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  roundNumber   Int
+  pairingMethod PairingMethod?
+
+  maximumScoreEnabled Boolean @default(true)
+  maximumScore        Int?    @default(350)
+
+  status      RoundStatus @default(DRAFT)
+  createdAt   DateTime    @default(now())
+  confirmedAt DateTime?
+
+  matches Match[]
+
+  @@unique([tournamentId, roundNumber])
+}
+
+// A physical table with a durable QR code, reused across the whole tournament (spec §12).
+model TournamentTable {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tableNumber  Int
+  qrToken      String     @unique @default(cuid())
+  createdAt    DateTime   @default(now())
+
+  matches Match[]
+
+  @@unique([tournamentId, tableNumber])
+}
+
+// One Game/Match between two Tournament Players (or a Bye) within a Round.
+model Match {
+  id      String           @id @default(cuid())
+  roundId String
+  round   Round            @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  tableId String?
+  table   TournamentTable? @relation(fields: [tableId], references: [id])
+
+  player1Id String
+  // Required (unlike player2), so it can't fall back to SetNull — must cascade, otherwise a
+  // completed match blocks deleting the Tournament that owns it.
+  player1   TournamentPlayer  @relation("MatchPlayer1", fields: [player1Id], references: [id], onDelete: Cascade)
+  player2Id String? // null => Bye (spec §19)
+  player2   TournamentPlayer? @relation("MatchPlayer2", fields: [player2Id], references: [id])
+  isBye     Boolean           @default(false)
+
+  // First/Second assignment for this game, only meaningful when Tournament.useFirstSecond (spec §11).
+  firstPlayerId  String?
+  secondPlayerId String?
+
+  // Each side independently reports the full result (spec §13) — compared in submissions
+  // below, never taken from a single side alone.
+  submissions MatchSubmission[]
+
+  // Final, agreed-upon (or admin-resolved) values used for all downstream calculations.
+  finalPlayer1Score Int?
+  finalPlayer2Score Int?
+  player1Result     MatchOutcome?
+  player2Result     MatchOutcome?
+
+  status MatchStatus @default(PENDING)
+
+  editedByAdminId String?
+  editedByAdmin   User?   @relation("MatchEditedByAdmin", fields: [editedByAdminId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roundId])
+  @@index([player1Id])
+  @@index([player2Id])
+}
+
+enum MatchSide {
+  PLAYER1
+  PLAYER2
+}
+
+// Spec §13: neither side's self-reported score is trusted alone. Each side submits BOTH
+// scores as they saw them; the two submissions are compared to auto-confirm or flag a
+// Score Conflict. Resubmitting (upsert on matchId+side) overwrites the previous entry.
+model MatchSubmission {
+  id           String    @id @default(cuid())
+  matchId      String
+  match        Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  side         MatchSide
+  player1Score Int
+  player2Score Int
+  submittedAt  DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([matchId, side])
+}

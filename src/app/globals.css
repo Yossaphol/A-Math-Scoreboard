@@ -1,26 +1,62 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f5f7;
+  --foreground: #1c1c1f;
+
+  --surface: 255 255 255;
+  --surface-border: 255 255 255;
+
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --muted: #6b7280;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-muted: var(--muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(79, 70, 229, 0.08), transparent 42%),
+    radial-gradient(circle at 88% 4%, rgba(5, 150, 105, 0.06), transparent 38%),
+    radial-gradient(circle at 50% 100%, rgba(217, 119, 6, 0.05), transparent 45%);
+  background-attachment: fixed;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Frosted white "card" surface used everywhere instead of ad-hoc borders. */
+.surface {
+  background-color: rgb(var(--surface) / 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgb(var(--surface-border) / 0.6);
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 12px 32px -12px rgba(16, 24, 40, 0.12);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
