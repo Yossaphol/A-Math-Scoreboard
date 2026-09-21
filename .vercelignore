@@ -1,0 +1,3 @@
+# Never upload local dev secrets/DB URLs as build source — production config comes only
+# from `vercel env` (Project Settings → Environment Variables), never a shipped .env file.
+.env*
