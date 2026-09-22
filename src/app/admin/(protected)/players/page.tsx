@@ -1,8 +1,11 @@
 import { requireAdmin } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
+import { unlinkGlobalPlayerAccount, deleteGlobalPlayerAccount } from "@/lib/actions/global-players";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { RenamePlayerForm } from "@/components/admin/RenamePlayerForm";
 import { inputClass } from "@/components/ui/styles";
 
 export default async function GlobalPlayersPage(props: PageProps<"/admin/players">) {
@@ -41,7 +44,8 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                 <th className="py-3 pl-5 pr-3">Global Player ID</th>
                 <th className="py-3 pr-3">Name</th>
                 <th className="py-3 pr-3">Linked Google Account</th>
-                <th className="py-3 pr-5 text-right">Tournaments</th>
+                <th className="py-3 pr-3 text-right">Tournaments</th>
+                <th className="py-3 pr-5"></th>
               </tr>
             </thead>
             <tbody>
@@ -49,11 +53,33 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                 <tr key={p.id} className="border-b border-neutral-100 last:border-0">
                   <td className="py-3 pl-5 pr-3 text-xs text-neutral-400">{p.id}</td>
                   <td className="py-3 pr-3">
-                    {p.name}
-                    {p.nickname && <span className="ml-2 text-xs text-neutral-500">{p.nickname}</span>}
+                    <RenamePlayerForm globalPlayerId={p.id} name={p.name} nickname={p.nickname} />
                   </td>
                   <td className="py-3 pr-3 text-xs text-neutral-500">{p.user?.email ?? "—"}</td>
-                  <td className="py-3 pr-5 text-right">{p._count.tournamentPlayers}</td>
+                  <td className="py-3 pr-3 text-right">{p._count.tournamentPlayers}</td>
+                  <td className="py-3 pr-5">
+                    {p.user && (
+                      <div className="flex justify-end gap-2">
+                        <form action={unlinkGlobalPlayerAccount}>
+                          <input type="hidden" name="globalPlayerId" value={p.id} />
+                          <ConfirmSubmitButton
+                            label="ยกเลิกผูกบัญชี"
+                            confirmTitle="ยกเลิกการผูกบัญชี Google?"
+                            confirmMessage={`${p.user.email} จะไม่ผูกกับผู้เล่น "${p.name}" อีกต่อไป (บัญชียังใช้ Login ได้ตามปกติ)`}
+                            variant="secondary"
+                          />
+                        </form>
+                        <form action={deleteGlobalPlayerAccount}>
+                          <input type="hidden" name="globalPlayerId" value={p.id} />
+                          <ConfirmSubmitButton
+                            label="ลบบัญชี"
+                            confirmTitle="ลบบัญชีผู้เล่นนี้?"
+                            confirmMessage={`บัญชี ${p.user.email} จะถูกลบถาวร (ต้อง Login ใหม่หากจะใช้งานอีก) ทำได้เฉพาะบัญชีที่ยังไม่เคยเป็น Staff หรือสร้าง Tournament`}
+                          />
+                        </form>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

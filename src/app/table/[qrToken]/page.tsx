@@ -1,8 +1,6 @@
 import { getActiveMatchForTable } from "@/lib/match/lookup";
-import { submitMatchResult } from "@/lib/actions/match";
+import { ResultForm } from "@/components/match/ResultForm";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { inputClass, labelClass } from "@/components/ui/styles";
 
 const RESULT_LABEL: Record<string, string> = { WIN: "ชนะ", TIE: "เสมอ", LOSS: "แพ้" };
 
@@ -20,7 +18,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
     );
   }
 
-  const { table, tournament, match } = result;
+  const { table, tournament, round, match } = result;
 
   if (match.isBye) {
     return (
@@ -30,6 +28,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
             {tournament.name} · Table {table.tableNumber}
           </p>
           <p className="mt-4 text-sm font-medium">โต๊ะนี้ไม่มีคู่แข่งขันในรอบนี้ (Bye)</p>
+          <p className="mt-1 text-xs text-neutral-400">รอบที่ {round.roundNumber}</p>
         </Card>
       </main>
     );
@@ -56,47 +55,77 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               result={match.player2Result}
             />
           </div>
+          <p className="mt-4 text-xs text-neutral-400">รอบที่ {round.roundNumber}</p>
         </Card>
       </main>
     );
   }
 
   const submissionBySide = new Map(match.submissions.map((s) => [s.side, s]));
+  const player1Name = match.player1.globalPlayer.name;
+  const player2Name = match.player2!.globalPlayer.name;
 
   return (
-    <main className="mx-auto max-w-lg px-4 py-10">
+    <main className="mx-auto max-w-md px-4 py-10">
       <p className="text-center text-xs text-neutral-500">
         {tournament.name} · Table {table.tableNumber}
       </p>
       <h1 className="mt-1 text-center text-lg font-semibold text-neutral-900">
-        {match.player1.globalPlayer.name} vs {match.player2!.globalPlayer.name}
+        {player1Name} vs {player2Name}
       </h1>
+      <p className="text-center text-xs text-neutral-400">รอบที่ {round.roundNumber}</p>
 
       {match.status === "CONFLICT" && (
         <Card className="mt-4 !bg-red-50/80 border-red-200 text-center">
           <p className="text-sm text-danger">
-            ผลที่กรอกจากสองฝ่ายไม่ตรงกัน กรุณาแจ้ง Admin/Staff เพื่อตรวจสอบและแก้ไข
+            ผลที่กรอกจากสองฝ่ายไม่ตรงกัน กรุณาตรวจสอบและส่งผลอีกครั้งทั้งสองฝั่ง
           </p>
         </Card>
       )}
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <SideForm
-          qrToken={qrToken}
-          matchId={match.id}
-          side="PLAYER1"
-          selfName={match.player1.globalPlayer.name}
-          opponentName={match.player2!.globalPlayer.name}
-          previous={submissionBySide.get("PLAYER1")}
-        />
-        <SideForm
-          qrToken={qrToken}
-          matchId={match.id}
-          side="PLAYER2"
-          selfName={match.player2!.globalPlayer.name}
-          opponentName={match.player1.globalPlayer.name}
-          previous={submissionBySide.get("PLAYER2")}
-        />
+      <div className="mt-6 flex flex-col gap-4">
+        {match.status === "CONFLICT" ? (
+          // Both sides already reported and disagreed — both need to review and resubmit.
+          <>
+            <ResultForm
+              qrToken={qrToken}
+              matchId={match.id}
+              side="PLAYER1"
+              player1Name={player1Name}
+              player2Name={player2Name}
+              previous={submissionBySide.get("PLAYER1")}
+              heading="ผลที่ฝั่งแรกส่ง"
+            />
+            <ResultForm
+              qrToken={qrToken}
+              matchId={match.id}
+              side="PLAYER2"
+              player1Name={player1Name}
+              player2Name={player2Name}
+              previous={submissionBySide.get("PLAYER2")}
+              heading="ผลที่ฝั่งที่สองส่ง"
+            />
+          </>
+        ) : (
+          // PENDING (no reports yet) or SUBMITTED (one side already reported) — only the
+          // remaining, still-empty slot needs a form; spec §13's cross-check (submitMatchResult
+          // comparing both submissions) is unchanged, this just avoids showing an already-filled
+          // side's form to the next person at the table.
+          <>
+            {match.status === "SUBMITTED" && (
+              <p className="text-center text-xs text-neutral-500">
+                อีกฝ่ายส่งผลแล้ว กรุณากรอกผลของอีกฝ่ายเพื่อยืนยัน
+              </p>
+            )}
+            <ResultForm
+              qrToken={qrToken}
+              matchId={match.id}
+              side={submissionBySide.has("PLAYER1") ? "PLAYER2" : "PLAYER1"}
+              player1Name={player1Name}
+              player2Name={player2Name}
+            />
+          </>
+        )}
       </div>
     </main>
   );
@@ -117,71 +146,5 @@ function PlayerResult({
       <p className="text-2xl font-semibold text-neutral-900">{score}</p>
       {result && <p className="text-xs text-neutral-500">{RESULT_LABEL[result]}</p>}
     </div>
-  );
-}
-
-function SideForm({
-  qrToken,
-  matchId,
-  side,
-  selfName,
-  opponentName,
-  previous,
-}: {
-  qrToken: string;
-  matchId: string;
-  side: "PLAYER1" | "PLAYER2";
-  selfName: string;
-  opponentName: string;
-  previous?: { player1Score: number; player2Score: number };
-}) {
-  const selfScore = previous
-    ? side === "PLAYER1"
-      ? previous.player1Score
-      : previous.player2Score
-    : undefined;
-  const opponentScore = previous
-    ? side === "PLAYER1"
-      ? previous.player2Score
-      : previous.player1Score
-    : undefined;
-
-  return (
-    <Card as="form" action={submitMatchResult}>
-      <input type="hidden" name="matchId" value={matchId} />
-      <input type="hidden" name="qrToken" value={qrToken} />
-      <input type="hidden" name="side" value={side} />
-      <p className="text-sm font-medium text-neutral-900">มุมมองของ {selfName}</p>
-
-      <label className={`${labelClass} mt-3 block`}>คะแนนของ {selfName}</label>
-      <input
-        type="number"
-        min={0}
-        name={side === "PLAYER1" ? "player1Score" : "player2Score"}
-        defaultValue={selfScore}
-        required
-        className={`${inputClass} mt-1`}
-      />
-
-      <label className={`${labelClass} mt-3 block`}>คะแนนของ {opponentName}</label>
-      <input
-        type="number"
-        min={0}
-        name={side === "PLAYER1" ? "player2Score" : "player1Score"}
-        defaultValue={opponentScore}
-        required
-        className={`${inputClass} mt-1`}
-      />
-
-      {previous && (
-        <p className="mt-2 text-[11px] text-neutral-400">
-          ส่งล่าสุด: {selfName} {selfScore} - {opponentName} {opponentScore}
-        </p>
-      )}
-
-      <Button type="submit" className="mt-4 w-full">
-        {previous ? "แก้ไขผล" : "ส่งผล"}
-      </Button>
-    </Card>
   );
 }
