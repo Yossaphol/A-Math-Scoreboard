@@ -7,6 +7,7 @@ import { assertTournamentAccess } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
 import { ensureTableCount } from "@/lib/tables";
 import { generateGlobalPlayerId } from "@/lib/global-player-id";
+import { parsePlayerImportFile, PlayerImportError } from "@/lib/players/import";
 
 const addPlayerSchema = z.object({
   tournamentId: z.string().min(1),
@@ -127,4 +128,104 @@ export async function reactivatePlayer(formData: FormData) {
     data: { status: "ACTIVE" },
   });
   revalidatePath(`/admin/tournaments/${tp.tournamentId}/players`);
+}
+
+// Bulk import from a .csv/.xlsx/.json roster. Every row is checked against existing Global
+// Players first (by globalPlayerId if given, else exact case-insensitive name match) — an
+// existing player is always reused, never duplicated, matching the same rule single-add
+// already follows. A row already in THIS tournament is skipped, not re-added. Bad rows are
+// recorded and skipped individually rather than failing the whole import.
+export async function importPlayersToTournament(formData: FormData) {
+  const tournamentId = String(formData.get("tournamentId"));
+  if (!tournamentId) throw new Error("ไม่พบ Tournament");
+  await assertTournamentAccess(tournamentId);
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("กรุณาเลือกไฟล์ .csv, .xlsx หรือ .json");
+  }
+
+  let rows;
+  try {
+    rows = await parsePlayerImportFile(file);
+  } catch (e) {
+    if (e instanceof PlayerImportError) throw e;
+    throw new Error("อ่านไฟล์ไม่สำเร็จ — ตรวจสอบรูปแบบไฟล์อีกครั้ง");
+  }
+
+  const summary = { addedNew: 0, addedExisting: 0, skippedDuplicate: 0, errors: [] as string[] };
+
+  await prisma.$transaction(async (tx) => {
+    const last = await tx.tournamentPlayer.findFirst({
+      where: { tournamentId },
+      orderBy: { tournamentPlayerNo: "desc" },
+    });
+    let nextNo = (last?.tournamentPlayerNo ?? 0) + 1;
+
+    for (const [index, row] of rows.entries()) {
+      try {
+        let globalPlayerId: number;
+        let isNewGlobalPlayer = false;
+
+        if (row.globalPlayerId != null) {
+          const existing = await tx.globalPlayer.findUnique({ where: { id: row.globalPlayerId } });
+          if (!existing) {
+            summary.errors.push(`แถว ${index + 1}: ไม่พบ Global Player ID ${row.globalPlayerId}`);
+            continue;
+          }
+          globalPlayerId = existing.id;
+        } else if (row.name) {
+          const existing = await tx.globalPlayer.findFirst({
+            where: { name: { equals: row.name, mode: "insensitive" } },
+          });
+          if (existing) {
+            globalPlayerId = existing.id;
+          } else {
+            const id = await generateGlobalPlayerId(tx);
+            const created = await tx.globalPlayer.create({
+              data: { id, name: row.name, nickname: row.nickname || null },
+            });
+            globalPlayerId = created.id;
+            isNewGlobalPlayer = true;
+          }
+        } else {
+          summary.errors.push(`แถว ${index + 1}: ไม่มีชื่อหรือ Global Player ID`);
+          continue;
+        }
+
+        const already = await tx.tournamentPlayer.findUnique({
+          where: { tournamentId_globalPlayerId: { tournamentId, globalPlayerId } },
+        });
+        if (already) {
+          summary.skippedDuplicate += 1;
+          continue;
+        }
+
+        await tx.tournamentPlayer.create({
+          data: { tournamentId, globalPlayerId, tournamentPlayerNo: nextNo, status: "ACTIVE" },
+        });
+        nextNo += 1;
+        if (isNewGlobalPlayer) summary.addedNew += 1;
+        else summary.addedExisting += 1;
+      } catch (e) {
+        summary.errors.push(`แถว ${index + 1}: ${e instanceof Error ? e.message : "เกิดข้อผิดพลาด"}`);
+      }
+    }
+
+    await ensureTableCount(tx, tournamentId);
+  });
+
+  const parts = [`เพิ่มใหม่ ${summary.addedNew} คน`, `ใช้ผู้เล่นเดิม ${summary.addedExisting} คน`];
+  if (summary.skippedDuplicate > 0) {
+    parts.push(`ข้าม ${summary.skippedDuplicate} คน (มีอยู่ใน Tournament นี้แล้ว)`);
+  }
+  if (summary.errors.length > 0) {
+    parts.push(
+      `ผิดพลาด ${summary.errors.length} แถว: ${summary.errors.slice(0, 3).join("; ")}${
+        summary.errors.length > 3 ? " ..." : ""
+      }`
+    );
+  }
+  await setFlash(`นำเข้าผู้เล่นเสร็จสิ้น — ${parts.join(", ")}`, summary.errors.length > 0 ? "error" : "success");
+  revalidatePath(`/admin/tournaments/${tournamentId}/players`);
 }

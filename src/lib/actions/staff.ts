@@ -24,11 +24,17 @@ export async function assignStaff(formData: FormData) {
   }
   const { tournamentId, email } = parsed.data;
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {},
-    create: { email, role: "STAFF" },
-  });
+  // Must promote an existing User too, not just create new ones as STAFF — otherwise anyone
+  // who already signed in once (auto-provisioned as plain USER) gets a TournamentStaff row
+  // but keeps role=USER, and requireStaffOrAdmin still locks them out of /admin entirely.
+  // Never downgrade an existing ADMIN, though — being made Staff on a Tournament is additive.
+  const existing = await prisma.user.findUnique({ where: { email } });
+  const user =
+    existing?.role === "ADMIN"
+      ? existing
+      : existing
+        ? await prisma.user.update({ where: { id: existing.id }, data: { role: "STAFF" } })
+        : await prisma.user.create({ data: { email, role: "STAFF" } });
 
   await prisma.tournamentStaff.upsert({
     where: { userId_tournamentId: { userId: user.id, tournamentId } },

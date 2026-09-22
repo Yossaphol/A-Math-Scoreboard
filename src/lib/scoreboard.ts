@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { cappedDiff } from "@/lib/match/diff";
 
 export type ScoreboardRow = {
   rank: number;
@@ -18,14 +19,6 @@ export type ScoreboardRow = {
   ownScoreTotal: number;
   opponentScoreTotal: number;
 };
-
-// Spec §8: a Maximum Score cap only affects Game Difference, never the raw score shown.
-function cappedScore(score: number, maximumScoreEnabled: boolean, maximumScore: number | null) {
-  if (maximumScoreEnabled && maximumScore != null && score > maximumScore) {
-    return maximumScore;
-  }
-  return score;
-}
 
 /**
  * Scoreboard is always derived from CONFIRMED matches only (spec §9.5) — never cached on
@@ -64,21 +57,21 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
     include: { round: true },
   });
 
-  // ownScoreTotal/opponentScoreTotal are always tracked so that Diff === ownTotal -
-  // opponentTotal holds exactly, including for a Bye (spec §19: modeled as own +100, opponent
-  // +0, rather than a bare diff bonus with no score behind it).
+  // ownScoreTotal/opponentScoreTotal always reflect the RAW score entered — only
+  // cumulativeDiff is computed from the per-game capped spread (cappedDiff above).
   function apply(
     playerId: string,
     result: "WIN" | "TIE" | "LOSS",
-    ownScore: number,
-    opponentScore: number
+    ownScoreRaw: number,
+    opponentScoreRaw: number,
+    diffContribution: number
   ) {
     const row = rows.get(playerId);
     if (!row) return;
     row.gamesPlayed += 1;
-    row.ownScoreTotal += ownScore;
-    row.opponentScoreTotal += opponentScore;
-    row.cumulativeDiff += ownScore - opponentScore;
+    row.ownScoreTotal += ownScoreRaw;
+    row.opponentScoreTotal += opponentScoreRaw;
+    row.cumulativeDiff += diffContribution;
     if (result === "WIN") {
       row.wins += 1;
       row.points += 2;
@@ -93,18 +86,19 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
   for (const m of matches) {
     if (m.isBye || !m.player2Id) {
       // Spec §19: Bye = W, Diff +100.
-      apply(m.player1Id, "WIN", 100, 0);
+      apply(m.player1Id, "WIN", 100, 0, 100);
       continue;
     }
     if (m.finalPlayer1Score == null || m.finalPlayer2Score == null || !m.player1Result || !m.player2Result) {
       continue;
     }
 
-    const p1 = cappedScore(m.finalPlayer1Score, m.round.maximumScoreEnabled, m.round.maximumScore);
-    const p2 = cappedScore(m.finalPlayer2Score, m.round.maximumScoreEnabled, m.round.maximumScore);
+    const p1Raw = m.finalPlayer1Score;
+    const p2Raw = m.finalPlayer2Score;
+    const diff = cappedDiff(p1Raw, p2Raw, m.round.maximumScoreEnabled, m.round.maximumScore);
 
-    apply(m.player1Id, m.player1Result, p1, p2);
-    apply(m.player2Id, m.player2Result, p2, p1);
+    apply(m.player1Id, m.player1Result, p1Raw, p2Raw, diff);
+    apply(m.player2Id, m.player2Result, p2Raw, p1Raw, -diff);
   }
 
   const sorted = Array.from(rows.values()).sort(

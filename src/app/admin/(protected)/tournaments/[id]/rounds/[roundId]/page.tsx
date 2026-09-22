@@ -2,10 +2,23 @@ import { notFound } from "next/navigation";
 import { requireTournamentAccess } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { adminSetMatchResult } from "@/lib/actions/match";
+import { cappedDiff } from "@/lib/match/diff";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { MATCH_STATUS_BADGE, ROUND_STATUS_BADGE } from "@/lib/status-labels";
+import { MATCH_STATUS_BADGE, ROUND_STATUS_BADGE, MATCH_OUTCOME_BADGE } from "@/lib/status-labels";
+import type { MatchOutcome } from "@/generated/prisma/enums";
+
+type RoundScoreRow = {
+  tournamentPlayerId: string;
+  tournamentPlayerNo: number;
+  name: string;
+  opponentName: string;
+  result: MatchOutcome | null;
+  ownScore: number | null;
+  opponentScore: number | null;
+  diff: number | null;
+};
 
 export default async function AdminRoundDetailPage(
   props: PageProps<"/admin/tournaments/[id]/rounds/[roundId]">
@@ -30,12 +43,99 @@ export default async function AdminRoundDetailPage(
 
   const roundStatus = ROUND_STATUS_BADGE[round.status];
 
+  // This Round's own summary only — unlike the Tournament-wide Scoreboard (which sums every
+  // Round), each player appears once here with just their opponent and result for THIS Round.
+  const roundRows: RoundScoreRow[] = [];
+  for (const m of round.matches) {
+    const confirmed = m.status === "CONFIRMED" || m.status === "BYE";
+
+    if (m.isBye || !m.player2) {
+      roundRows.push({
+        tournamentPlayerId: m.player1Id,
+        tournamentPlayerNo: m.player1.tournamentPlayerNo,
+        name: m.player1.globalPlayer.name,
+        opponentName: "Bye",
+        result: confirmed ? "WIN" : null,
+        ownScore: confirmed ? 100 : null,
+        opponentScore: confirmed ? 0 : null,
+        diff: confirmed ? 100 : null,
+      });
+      continue;
+    }
+
+    const diff =
+      confirmed && m.finalPlayer1Score != null && m.finalPlayer2Score != null
+        ? cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, round.maximumScoreEnabled, round.maximumScore)
+        : null;
+
+    roundRows.push({
+      tournamentPlayerId: m.player1Id,
+      tournamentPlayerNo: m.player1.tournamentPlayerNo,
+      name: m.player1.globalPlayer.name,
+      opponentName: m.player2.globalPlayer.name,
+      result: confirmed ? m.player1Result : null,
+      ownScore: confirmed ? m.finalPlayer1Score : null,
+      opponentScore: confirmed ? m.finalPlayer2Score : null,
+      diff,
+    });
+    roundRows.push({
+      tournamentPlayerId: m.player2Id!,
+      tournamentPlayerNo: m.player2.tournamentPlayerNo,
+      name: m.player2.globalPlayer.name,
+      opponentName: m.player1.globalPlayer.name,
+      result: confirmed ? m.player2Result : null,
+      ownScore: confirmed ? m.finalPlayer2Score : null,
+      opponentScore: confirmed ? m.finalPlayer1Score : null,
+      diff: diff == null ? null : -diff,
+    });
+  }
+  roundRows.sort((a, b) => a.tournamentPlayerNo - b.tournamentPlayerNo);
+
   return (
     <div>
       <PageHeader
         title={`Round ${round.roundNumber}`}
         actions={<Badge variant={roundStatus.variant}>{roundStatus.label}</Badge>}
       />
+
+      {roundRows.length > 0 && (
+        <Card padding="p-0" className="mb-6 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
+                <th className="py-3 pl-5 pr-3">ผู้เล่น</th>
+                <th className="py-3 pr-3">คู่ต่อสู้</th>
+                <th className="py-3 pr-3 text-center">ผล</th>
+                <th className="py-3 pr-3 text-right">คะแนนที่ทำได้</th>
+                <th className="py-3 pr-3 text-right">คะแนนคู่ต่อสู้</th>
+                <th className="py-3 pr-5 text-right">ผลต่าง</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roundRows.map((r) => {
+                const badge = r.result ? MATCH_OUTCOME_BADGE[r.result] : null;
+                return (
+                  <tr key={r.tournamentPlayerId} className="border-b border-neutral-100 last:border-0">
+                    <td className="py-3 pl-5 pr-3">
+                      {r.name}
+                      <span className="ml-1.5 text-xs text-neutral-400">(#{r.tournamentPlayerNo})</span>
+                    </td>
+                    <td className="py-3 pr-3 text-neutral-600">{r.opponentName}</td>
+                    <td className="py-3 pr-3 text-center">
+                      {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : "—"}
+                    </td>
+                    <td className="py-3 pr-3 text-right">{r.ownScore ?? "—"}</td>
+                    <td className="py-3 pr-3 text-right">{r.opponentScore ?? "—"}</td>
+                    <td className="py-3 pr-5 text-right">
+                      {r.diff == null ? "—" : r.diff > 0 ? `+${r.diff}` : r.diff}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       <ul className="space-y-3">
         {round.matches.map((m) => {

@@ -33,44 +33,67 @@ export async function submitMatchResult(formData: FormData) {
   }
   const { matchId, side, player1Score, player2Score, qrToken } = parsed.data;
 
-  const match = await prisma.match.findUniqueOrThrow({ where: { id: matchId } });
-  if (match.isBye || match.status === "CONFIRMED") {
-    throw new Error("Match นี้ปิดรับผลแล้ว");
-  }
+  // Two devices (one per side) can submit within milliseconds of each other, e.g. both
+  // resubmitting right after a Score Conflict. Without a lock, both could read the other
+  // side's submission as "missing"/stale at the same time and each decide the comparison on
+  // its own, leaving the match on the wrong status. The FOR UPDATE lock on the Match row
+  // forces the second submission to wait and then re-read fresh data, so the upsert + compare
+  // + status-write always happens against the true latest state.
+  const outcome = await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<{ id: string; isBye: boolean; status: string; roundId: string }[]>`
+      SELECT id, "isBye", status, "roundId" FROM "Match" WHERE id = ${matchId} FOR UPDATE
+    `;
+    const match = locked[0];
+    if (!match) throw new Error("ไม่พบ Match");
+    // Expected, not exceptional: a stale page (the match was already confirmed by the other
+    // side, or turned out to be a Bye) still shows an active form. This used to throw, which
+    // with no error boundary crashed the whole page ("This page couldn't load") instead of
+    // just showing the now-current state — so it's handled as a normal outcome instead.
+    if (match.isBye) return { kind: "already-bye" as const };
+    if (match.status === "CONFIRMED") return { kind: "already-confirmed" as const };
 
-  await prisma.matchSubmission.upsert({
-    where: { matchId_side: { matchId, side } },
-    update: { player1Score, player2Score },
-    create: { matchId, side, player1Score, player2Score },
-  });
-
-  const otherSide = side === "PLAYER1" ? "PLAYER2" : "PLAYER1";
-  const otherSubmission = await prisma.matchSubmission.findUnique({
-    where: { matchId_side: { matchId, side: otherSide } },
-  });
-
-  if (!otherSubmission) {
-    await prisma.match.update({ where: { id: matchId }, data: { status: "SUBMITTED" } });
-    await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
-  } else if (
-    otherSubmission.player1Score === player1Score &&
-    otherSubmission.player2Score === player2Score
-  ) {
-    const result = computeResult(player1Score, player2Score);
-    await prisma.match.update({
-      where: { id: matchId },
-      data: {
-        finalPlayer1Score: player1Score,
-        finalPlayer2Score: player2Score,
-        player1Result: result.player1Result,
-        player2Result: result.player2Result,
-        status: "CONFIRMED",
-      },
+    await tx.matchSubmission.upsert({
+      where: { matchId_side: { matchId, side } },
+      update: { player1Score, player2Score },
+      create: { matchId, side, player1Score, player2Score },
     });
-    await maybeCompleteRound(match.roundId);
+
+    const submissions = await tx.matchSubmission.findMany({ where: { matchId } });
+    const mine = submissions.find((s) => s.side === side)!;
+    const other = submissions.find((s) => s.side !== side);
+
+    if (!other) {
+      await tx.match.update({ where: { id: matchId }, data: { status: "SUBMITTED" } });
+      return { kind: "waiting" as const };
+    }
+
+    if (other.player1Score === mine.player1Score && other.player2Score === mine.player2Score) {
+      const result = computeResult(mine.player1Score, mine.player2Score);
+      await tx.match.update({
+        where: { id: matchId },
+        data: {
+          finalPlayer1Score: mine.player1Score,
+          finalPlayer2Score: mine.player2Score,
+          player1Result: result.player1Result,
+          player2Result: result.player2Result,
+          status: "CONFIRMED",
+        },
+      });
+      return { kind: "confirmed" as const, roundId: match.roundId };
+    }
+
+    await tx.match.update({ where: { id: matchId }, data: { status: "CONFLICT" } });
+    return { kind: "conflict" as const };
+  });
+
+  if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
+    await setFlash("ผลถูกยืนยันแล้ว — หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
+  } else if (outcome.kind === "waiting") {
+    await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
+  } else if (outcome.kind === "confirmed") {
+    await maybeCompleteRound(outcome.roundId);
     await setFlash("ผลตรงกัน ยืนยันผลแล้ว");
   } else {
-    await prisma.match.update({ where: { id: matchId }, data: { status: "CONFLICT" } });
     await setFlash("ผลไม่ตรงกับอีกฝ่าย รอ Admin/Staff ตรวจสอบ", "error");
   }
 

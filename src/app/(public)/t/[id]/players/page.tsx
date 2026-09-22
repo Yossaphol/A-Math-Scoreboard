@@ -52,9 +52,14 @@ export default async function PublicPlayersPage(props: PageProps<"/t/[id]/player
             <tbody>
               {players.map((p) => (
                 <tr key={p.tournamentPlayerId} className="border-b border-neutral-100 last:border-0">
-                  <td className="py-3 pl-5 pr-3 text-neutral-500">{p.tournamentPlayerNo}</td>
+                  <td className="py-3 pl-5 pr-3 text-neutral-500">{p.rank}</td>
                   <td className="py-3 pr-3">
-                    <p className="font-medium">{p.name}</p>
+                    <p className="font-medium">
+                      {p.name}
+                      <span className="ml-1.5 text-xs font-normal text-neutral-400">
+                        (#{p.tournamentPlayerNo})
+                      </span>
+                    </p>
                     {p.nickname && <p className="text-xs text-neutral-500">{p.nickname}</p>}
                     {p.status === "WITHDRAWN" && (
                       <Badge variant="neutral" className="mt-1">

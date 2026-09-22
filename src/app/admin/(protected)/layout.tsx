@@ -2,6 +2,7 @@ import { requireStaffOrAdmin } from "@/lib/dal";
 import { logoutAction } from "@/lib/actions/auth";
 import { NavLink } from "@/components/ui/NavLink";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 
 const ADMIN_NAV = [
   { href: "/admin", label: "Dashboard" },
@@ -28,8 +29,9 @@ export default async function AdminProtectedLayout({
         <div className="flex items-center justify-between gap-3 px-4 py-3 md:block md:pb-0 md:pt-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-neutral-900">Score A-Math</p>
-            <p className="mt-0.5 truncate text-xs text-neutral-500">
-              {user.name || user.email} · {user.role}
+            <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-neutral-500">
+              <span className="truncate">{user.name || user.email}</span>
+              <Badge variant={user.role === "ADMIN" ? "danger" : "info"}>{user.role}</Badge>
             </p>
           </div>
           <form action={logoutAction} className="shrink-0 md:hidden">

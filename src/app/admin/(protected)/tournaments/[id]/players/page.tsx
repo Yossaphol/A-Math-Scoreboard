@@ -4,6 +4,7 @@ import {
   removePlayerFromTournament,
   withdrawPlayer,
   reactivatePlayer,
+  importPlayersToTournament,
 } from "@/lib/actions/players";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -111,6 +112,28 @@ export default async function TournamentPlayersPage(
             <input name="nickname" className={`${inputClass} mt-1`} />
           </div>
           <Button type="submit">+ Add Player</Button>
+        </form>
+      </Card>
+
+      <Card className="mt-6">
+        <h2 className="text-sm font-medium text-neutral-900">นำเข้าผู้เล่นจากไฟล์</h2>
+        <p className="mt-1 text-xs text-neutral-500">
+          รองรับ .csv, .xlsx, .json — คอลัมน์ที่รองรับ: <code>name</code>, <code>nickname</code> (ไม่บังคับ),{" "}
+          <code>globalPlayerId</code> (ไม่บังคับ — ถ้าใส่จะใช้ผู้เล่นที่มีอยู่แล้วตาม ID นั้นทันที) ผู้เล่นที่ชื่อตรงกับ
+          ที่มีอยู่แล้วในระบบจะถูกใช้ซ้ำ ไม่สร้างใหม่ซ้ำซ้อน
+        </p>
+        <form action={importPlayersToTournament} className="mt-3 flex flex-wrap items-end gap-3">
+          <input type="hidden" name="tournamentId" value={id} />
+          <input
+            type="file"
+            name="file"
+            accept=".csv,.xlsx,.xls,.json"
+            required
+            className={`${inputClass} max-w-xs`}
+          />
+          <Button type="submit" variant="secondary">
+            นำเข้าผู้เล่น
+          </Button>
         </form>
       </Card>
 

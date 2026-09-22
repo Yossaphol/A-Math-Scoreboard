@@ -13,6 +13,7 @@
   --success: #059669;
   --warning: #d97706;
   --danger: #dc2626;
+  --info: #0284c7;
   --muted: #6b7280;
 }
 
@@ -24,6 +25,7 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-info: var(--info);
   --color-muted: var(--muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -34,7 +36,13 @@ body {
   background-image:
     radial-gradient(circle at 12% 8%, rgba(79, 70, 229, 0.08), transparent 42%),
     radial-gradient(circle at 88% 4%, rgba(5, 150, 105, 0.06), transparent 38%),
-    radial-gradient(circle at 50% 100%, rgba(217, 119, 6, 0.05), transparent 45%);
+    radial-gradient(circle at 50% 100%, rgba(217, 119, 6, 0.05), transparent 45%),
+    radial-gradient(circle, rgba(28, 28, 31, 0.16) 0.75px, transparent 0.75px);
+  background-size:
+    auto,
+    auto,
+    auto,
+    20px 20px;
   background-attachment: fixed;
   color: var(--foreground);
 }

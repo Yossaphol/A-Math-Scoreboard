@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSession } from "@/lib/dal";
 import { LinkButton } from "@/components/ui/Button";
+import { UserMenu } from "@/components/account/UserMenu";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -13,12 +14,13 @@ export default async function PublicLayout({ children }: { children: React.React
             Score A-Math
           </Link>
           {session?.user ? (
-            <LinkButton href="/account" variant="secondary" size="sm">
-              {session.user.name || session.user.email}
-            </LinkButton>
+            <UserMenu
+              name={session.user.name || session.user.email || "User"}
+              isStaffOrAdmin={session.user.role === "ADMIN" || session.user.role === "STAFF"}
+            />
           ) : (
             <LinkButton href="/login?callbackUrl=/account" variant="secondary" size="sm">
-              User
+              Login
             </LinkButton>
           )}
         </div>

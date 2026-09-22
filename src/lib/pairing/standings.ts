@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { cappedDiff } from "@/lib/match/diff";
 import type { Standing } from "./types";
 
 /**
@@ -55,14 +56,12 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
       continue;
     }
 
-    // Spec §8: Maximum Score caps the score used for Diff, never the raw recorded score.
-    const cap = (score: number) =>
-      m.round.maximumScoreEnabled && m.round.maximumScore != null && score > m.round.maximumScore
-        ? m.round.maximumScore
-        : score;
-    const s1 = cap(m.finalPlayer1Score);
-    const s2 = cap(m.finalPlayer2Score);
-    const diff = s1 - s2;
+    const diff = cappedDiff(
+      m.finalPlayer1Score,
+      m.finalPlayer2Score,
+      m.round.maximumScoreEnabled,
+      m.round.maximumScore
+    );
 
     if (p1) {
       p1.diff += diff;

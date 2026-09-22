@@ -37,6 +37,35 @@ export async function requestPlayerLink(formData: FormData) {
   revalidatePath("/account");
 }
 
+const updateOwnNameSchema = z.object({
+  name: z.string().trim().min(1, "กรุณากรอกชื่อ"),
+  nickname: z.string().trim().optional(),
+});
+
+// A User may only rename the Player they're linked to (via userId), never anyone else's —
+// this is the self-service counterpart to Admin's renameGlobalPlayer in global-players.ts.
+export async function updateOwnPlayerName(formData: FormData) {
+  const session = await getSession();
+  if (!session?.user) throw new Error("ต้อง Login ก่อน");
+
+  const parsed = updateOwnNameSchema.safeParse({
+    name: formData.get("name"),
+    nickname: formData.get("nickname") || undefined,
+  });
+  if (!parsed.success) throw new Error(parsed.error.issues.map((i) => i.message).join(", "));
+
+  const player = await prisma.globalPlayer.findUnique({ where: { userId: session.user.id } });
+  if (!player) throw new Error("บัญชีนี้ยังไม่ได้ผูกกับผู้เล่น");
+
+  await prisma.globalPlayer.update({
+    where: { id: player.id },
+    data: { name: parsed.data.name, nickname: parsed.data.nickname || null },
+  });
+
+  await setFlash("แก้ไขชื่อแล้ว");
+  revalidatePath("/account");
+}
+
 export async function approveLinkRequest(formData: FormData) {
   const admin = await assertAdmin();
   const requestId = String(formData.get("requestId"));
