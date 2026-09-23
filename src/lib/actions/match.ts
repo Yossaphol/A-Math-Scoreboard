@@ -9,6 +9,7 @@ import { resolveMatchSubmission } from "@/lib/match/submit";
 import { maybeCompleteRound } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
 import { publicTournamentPath } from "@/lib/tournament-path";
+import { logAdminAction } from "@/lib/audit-log";
 
 const submitSchema = z.object({
   matchId: z.string().min(1),
@@ -77,7 +78,11 @@ export async function adminSetMatchResult(formData: FormData) {
 
   const match = await prisma.match.findUniqueOrThrow({
     where: { id: matchId },
-    include: { tournament: { select: { mode: true } } },
+    include: {
+      tournament: { select: { mode: true } },
+      player1: { include: { globalPlayer: true } },
+      player2: { include: { globalPlayer: true } },
+    },
   });
   const admin = await assertTournamentAccess(match.tournamentId);
   if (match.isBye) {
@@ -100,6 +105,15 @@ export async function adminSetMatchResult(formData: FormData) {
     await maybeCompleteRound(match.roundId);
     revalidatePath(`/admin/tournaments/${match.tournamentId}/rounds/${match.roundId}`);
   }
+
+  const vsName = match.player2 ? `${match.player1.globalPlayer.name} vs ${match.player2.globalPlayer.name}` : match.player1.globalPlayer.name;
+  await logAdminAction({
+    actorId: admin.id,
+    action: "match.admin_override",
+    summary: `แก้ไขผล ${vsName} เป็น ${player1Score}-${player2Score}`,
+    targetType: "Match",
+    targetId: match.id,
+  });
 
   await setFlash("บันทึกผลแล้ว");
   revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);

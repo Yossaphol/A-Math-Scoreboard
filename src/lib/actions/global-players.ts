@@ -7,6 +7,7 @@ import { assertAdmin } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
 import { generateGlobalPlayerId } from "@/lib/global-player-id";
 import { publicTournamentPath } from "@/lib/tournament-path";
+import { logAdminAction } from "@/lib/audit-log";
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "กรุณากรอกชื่อ"),
@@ -64,16 +65,26 @@ const targetSchema = z.object({ globalPlayerId: z.coerce.number().int().positive
 // Keeps the linked User's login intact — only severs this Player's connection to it, so the
 // same (or a different) Google account can be linked again later via a fresh LinkRequest.
 export async function unlinkGlobalPlayerAccount(formData: FormData) {
-  await assertAdmin();
+  const admin = await assertAdmin();
   const parsed = targetSchema.safeParse({ globalPlayerId: formData.get("globalPlayerId") });
   if (!parsed.success) throw new Error("ไม่พบผู้เล่น");
 
   const player = await prisma.globalPlayer.findUniqueOrThrow({
     where: { id: parsed.data.globalPlayerId },
+    include: { user: true },
   });
   if (!player.userId) throw new Error("ผู้เล่นนี้ไม่ได้ผูกบัญชีอยู่");
 
   await prisma.globalPlayer.update({ where: { id: player.id }, data: { userId: null } });
+
+  await logAdminAction({
+    actorId: admin.id,
+    action: "player.unlink_account",
+    summary: `ยกเลิกผูกบัญชี ${player.user!.email} จากผู้เล่น "${player.name}" (${player.id})`,
+    targetType: "GlobalPlayer",
+    targetId: String(player.id),
+  });
+
   await setFlash("ยกเลิกการผูกบัญชี Google แล้ว");
   revalidatePath("/admin/players");
 }
@@ -83,7 +94,7 @@ export async function unlinkGlobalPlayerAccount(formData: FormData) {
 // who created a Tournament, must be handled from Staff/Admins management instead — never as a
 // side effect of cleaning up a Player here.
 export async function deleteGlobalPlayerAccount(formData: FormData) {
-  await assertAdmin();
+  const admin = await assertAdmin();
   const parsed = targetSchema.safeParse({ globalPlayerId: formData.get("globalPlayerId") });
   if (!parsed.success) throw new Error("ไม่พบผู้เล่น");
 
@@ -108,6 +119,14 @@ export async function deleteGlobalPlayerAccount(formData: FormData) {
     prisma.user.delete({ where: { id: player.user.id } }),
   ]);
 
+  await logAdminAction({
+    actorId: admin.id,
+    action: "player.delete_account",
+    summary: `ลบบัญชี ${player.user.email} ของผู้เล่น "${player.name}" (${player.id})`,
+    targetType: "GlobalPlayer",
+    targetId: String(player.id),
+  });
+
   await setFlash("ลบบัญชีผู้เล่นแล้ว");
   revalidatePath("/admin/players");
 }
@@ -117,7 +136,7 @@ export async function deleteGlobalPlayerAccount(formData: FormData) {
 // only possible for a Player who has never actually been added to a Tournament; once they have
 // match/score history, that history must be kept (same rule as removePlayerFromTournament).
 export async function deleteGlobalPlayer(formData: FormData) {
-  await assertAdmin();
+  const admin = await assertAdmin();
   const parsed = targetSchema.safeParse({ globalPlayerId: formData.get("globalPlayerId") });
   if (!parsed.success) throw new Error("ไม่พบผู้เล่น");
 
@@ -135,6 +154,14 @@ export async function deleteGlobalPlayer(formData: FormData) {
     prisma.globalPlayer.delete({ where: { id: player.id } }),
   ]);
 
+  await logAdminAction({
+    actorId: admin.id,
+    action: "player.delete",
+    summary: `ลบผู้เล่น "${player.name}" (${player.id})`,
+    targetType: "GlobalPlayer",
+    targetId: String(player.id),
+  });
+
   await setFlash("ลบผู้เล่นแล้ว");
   revalidatePath("/admin/players");
 }
@@ -147,7 +174,7 @@ export async function deleteGlobalPlayer(formData: FormData) {
 // delete, but player2Id only SETS NULL (would leave a broken half-populated Match behind), so
 // every Match is deleted explicitly first regardless of which side this player was on.
 export async function forceDeleteGlobalPlayer(formData: FormData) {
-  await assertAdmin();
+  const admin = await assertAdmin();
   const parsed = targetSchema.safeParse({ globalPlayerId: formData.get("globalPlayerId") });
   if (!parsed.success) throw new Error("ไม่พบผู้เล่น");
 
@@ -173,6 +200,14 @@ export async function forceDeleteGlobalPlayer(formData: FormData) {
   const tournamentModes = await prisma.tournament.findMany({
     where: { id: { in: tournamentIds } },
     select: { id: true, mode: true },
+  });
+
+  await logAdminAction({
+    actorId: admin.id,
+    action: "player.force_delete",
+    summary: `ลบผู้เล่น "${player.name}" (${player.id}) พร้อมประวัติการแข่งขัน ${tournamentIds.length} Tournament`,
+    targetType: "GlobalPlayer",
+    targetId: String(player.id),
   });
 
   await setFlash("ลบผู้เล่นแล้ว (รวมประวัติการแข่งขันทั้งหมด)");

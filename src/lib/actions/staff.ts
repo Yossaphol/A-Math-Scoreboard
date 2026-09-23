@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertAdmin } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
+import { logAdminAction } from "@/lib/audit-log";
 
 const assignSchema = z.object({
   tournamentId: z.string().min(1),
@@ -13,7 +14,7 @@ const assignSchema = z.object({
 
 // Spec §5/§6: only Admin can add/remove Staff, and it's always scoped to one Tournament.
 export async function assignStaff(formData: FormData) {
-  await assertAdmin();
+  const admin = await assertAdmin();
 
   const parsed = assignSchema.safeParse({
     tournamentId: formData.get("tournamentId"),
@@ -42,18 +43,35 @@ export async function assignStaff(formData: FormData) {
     create: { userId: user.id, tournamentId, status: "ACTIVE" },
   });
 
+  await logAdminAction({
+    actorId: admin.id,
+    action: "staff.assign",
+    summary: `เพิ่ม ${email} เป็น Staff ของ Tournament`,
+    targetType: "TournamentStaff",
+    targetId: tournamentId,
+  });
+
   await setFlash(`เพิ่ม ${email} เป็น Staff แล้ว`);
   revalidatePath(`/admin/tournaments/${tournamentId}/staff`);
   revalidatePath("/admin/staff");
 }
 
 export async function revokeStaff(formData: FormData) {
-  await assertAdmin();
+  const admin = await assertAdmin();
   const staffAssignmentId = String(formData.get("staffAssignmentId"));
 
   const assignment = await prisma.tournamentStaff.update({
     where: { id: staffAssignmentId },
     data: { status: "REVOKED" },
+    include: { user: true },
+  });
+
+  await logAdminAction({
+    actorId: admin.id,
+    action: "staff.revoke",
+    summary: `ถอด ${assignment.user.email} จาก Staff ของ Tournament`,
+    targetType: "TournamentStaff",
+    targetId: assignment.tournamentId,
   });
 
   await setFlash("ถอด Staff แล้ว");

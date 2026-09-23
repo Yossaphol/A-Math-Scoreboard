@@ -11,6 +11,7 @@ const ADMIN_NAV = [
   { href: "/admin/staff", label: "Staff" },
   { href: "/admin/account-requests", label: "Account Requests" },
   { href: "/admin/admins", label: "Admins" },
+  { href: "/admin/audit-log", label: "Audit Log" },
 ];
 
 const STAFF_NAV = [{ href: "/admin", label: "My Tournaments" }];

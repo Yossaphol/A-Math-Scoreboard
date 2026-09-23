@@ -87,6 +87,7 @@ model User {
   linkRequestsMade    LinkRequest[]     @relation("LinkRequestUser")
   linkRequestsHandled LinkRequest[]     @relation("LinkRequestReviewer")
   editedMatches       Match[]           @relation("MatchEditedByAdmin")
+  auditLogs           AuditLog[]
 }
 
 // Global Player ID — stable identity for a player across every tournament (spec §1).
@@ -314,4 +315,25 @@ model MatchSubmission {
   updatedAt    DateTime  @updatedAt
 
   @@unique([matchId, side])
+}
+
+// Central trail of consequential Admin/Staff actions (add/remove Admin, assign/revoke Staff,
+// delete/unlink a Player, delete a Tournament, override a match result, ...) — none of these
+// previously left any record of who did it. Deliberately NOT for anonymous player score entry
+// at /table or /practice/play, which already has its own trail via MatchSubmission
+// (side/scores/timestamp per side) and has no logged-in actor to attribute to anyway.
+model AuditLog {
+  id      String @id @default(cuid())
+  actorId String
+  actor   User   @relation(fields: [actorId], references: [id])
+
+  action     String // short machine-readable key, e.g. "player.delete", "admin.remove"
+  summary    String // human-readable one-liner shown in the log UI
+  targetType String? // e.g. "GlobalPlayer", "Tournament", "User", "Match"
+  targetId   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
 }

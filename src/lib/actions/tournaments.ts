@@ -9,6 +9,7 @@ import { assertAdmin, assertTournamentAccess } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
 import { practiceUnlockCookieName } from "@/lib/practice-lock";
 import { publicTournamentPath, publicTournamentListPath } from "@/lib/tournament-path";
+import { logAdminAction } from "@/lib/audit-log";
 
 const createTournamentSchema = z.object({
   name: z.string().trim().min(2, "ชื่อ Tournament ต้องมีอย่างน้อย 2 ตัวอักษร"),
@@ -127,10 +128,18 @@ export async function deleteTournament(formData: FormData) {
     throw new Error(parsed.error.issues.map((i) => i.message).join(", "));
   }
   const { tournamentId } = parsed.data;
-  await assertAdmin();
+  const admin = await assertAdmin();
 
   const tournament = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
   await prisma.tournament.delete({ where: { id: tournamentId } });
+
+  await logAdminAction({
+    actorId: admin.id,
+    action: "tournament.delete",
+    summary: `ลบ Tournament "${tournament.name}" (${tournament.mode})`,
+    targetType: "Tournament",
+    targetId: tournament.id,
+  });
 
   await setFlash(`ลบ Tournament "${tournament.name}" แล้ว`);
   revalidatePath("/admin/tournaments");
