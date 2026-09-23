@@ -21,7 +21,7 @@ function shuffled<T>(items: T[]): T[] {
   return arr;
 }
 
-function rankOrder(standings: Standing[]): Standing[] {
+export function rankOrder(standings: Standing[]): Standing[] {
   return [...standings].sort(
     (a, b) => b.points - a.points || b.diff - a.diff || a.tournamentPlayerNo - b.tournamentPlayerNo
   );

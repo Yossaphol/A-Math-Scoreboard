@@ -4,20 +4,8 @@ import {
   swissPairing,
   roundRobinPairing,
 } from "./algorithms";
+import { SWISS_CASES, makeStandings, pairLabel } from "./swiss-cases";
 import type { Standing } from "./types";
-
-function makeStandings(
-  specs: { no: number; points: number; diff: number; opponents?: number[]; hadBye?: boolean }[]
-): Standing[] {
-  return specs.map((s) => ({
-    id: `p${s.no}`,
-    tournamentPlayerNo: s.no,
-    points: s.points,
-    diff: s.diff,
-    opponents: new Set((s.opponents ?? []).map((n) => `p${n}`)),
-    hadBye: s.hadBye ?? false,
-  }));
-}
 
 function assertAllPaired(standings: Standing[], results: { player1Id: string; player2Id: string | null }[]) {
   const seen = new Set<string>();
@@ -72,112 +60,15 @@ function assertAllPaired(standings: Standing[], results: { player1Id: string; pl
   console.log("king of the hill: OK");
 }
 
-// Swiss fixtures: player N is ranked N-th (Diff falls down the list), so expected pairings read
-// in the organizer's own rank notation — "1-3 2-4" means rank 1 vs rank 3, rank 2 vs rank 4.
-function rankedStandings(pointsByRank: number[]): Standing[] {
-  return makeStandings(pointsByRank.map((points, i) => ({ no: i + 1, points, diff: -i })));
-}
-
-function repeat(points: number, count: number): number[] {
-  return Array.from({ length: count }, () => points);
-}
-
-function foldPairs(from: number, to: number): string[] {
-  const half = (to - from + 1) / 2;
-  return Array.from({ length: half }, (_, i) => `${from + i}-${from + half + i}`);
-}
-
-function expectPairs(
-  label: string,
-  standings: Standing[],
-  results: { player1Id: string; player2Id: string | null }[],
-  expected: string[]
-) {
-  assertAllPaired(standings, results);
-  const got = results
-    .map((r) => `${r.player1Id.slice(1)}-${r.player2Id ? r.player2Id.slice(1) : "BYE"}`)
-    .join(" ");
-  if (got !== expected.join(" ")) {
-    throw new Error(`${label}: expected "${expected.join(" ")}", got "${got}"`);
+// --- Swiss: every case in swiss-cases.ts (the same ones /dev/swiss shows in the browser) ---
+for (const c of SWISS_CASES) {
+  const results = swissPairing(c.standings);
+  assertAllPaired(c.standings, results);
+  const got = results.map(pairLabel).join(" ");
+  if (got !== c.expected.join(" ")) {
+    throw new Error(`swiss "${c.title}": expected "${c.expected.join(" ")}", got "${got}"`);
   }
-  console.log(`${label}: OK`);
-}
-
-// --- Swiss: 8 players, round 2 — {1-4} at 2 points, {5-8} at 0, each group folds in half ---
-{
-  const standings = rankedStandings([...repeat(2, 4), ...repeat(0, 4)]);
-  expectPairs("swiss (8 players, round 2)", standings, swissPairing(standings), [
-    "1-3", "2-4", "5-7", "6-8",
-  ]);
-}
-
-// --- Swiss: 8 players, round 3 — 4 points x2, 2 points x4, 0 points x2 ---
-{
-  const standings = rankedStandings([...repeat(4, 2), ...repeat(2, 4), ...repeat(0, 2)]);
-  expectPairs("swiss (8 players, round 3)", standings, swissPairing(standings), [
-    "1-2", "3-5", "4-6", "7-8",
-  ]);
-}
-
-// --- Swiss: 30 players, round 2 — 15 winners is odd, so rank 16 (best Diff at 0) floats up ---
-{
-  const standings = rankedStandings([...repeat(2, 15), ...repeat(0, 15)]);
-  expectPairs("swiss (30 players, round 2, float up)", standings, swissPairing(standings), [
-    ...foldPairs(1, 16),
-    ...foldPairs(17, 30),
-  ]);
-}
-
-// --- Swiss: 30 players, round 3 — 4pt x8, 2pt x15 (+ rank 24 floats up), 0pt x7 -> 6 left ---
-{
-  const standings = rankedStandings([...repeat(4, 8), ...repeat(2, 15), ...repeat(0, 7)]);
-  expectPairs("swiss (30 players, round 3, float up)", standings, swissPairing(standings), [
-    ...foldPairs(1, 8),
-    ...foldPairs(9, 24),
-    ...foldPairs(25, 30),
-  ]);
-}
-
-// --- Swiss: the floater is the best Diff of the lower group, not the lowest player number ---
-{
-  const standings = makeStandings([
-    { no: 1, points: 2, diff: 90 },
-    { no: 2, points: 2, diff: 60 },
-    { no: 3, points: 2, diff: 30 },
-    { no: 4, points: 0, diff: -50 },
-    { no: 5, points: 0, diff: 30 },
-    { no: 6, points: 0, diff: 0 },
-  ]);
-  // rank: p1 p2 p3 | p5 p6 p4 -> {p1 p2 p3 p5} folds 1-3 2-5, then {p6 p4}
-  expectPairs("swiss (floater by Diff)", standings, swissPairing(standings), ["1-3", "2-5", "6-4"]);
-}
-
-// --- Swiss: round 1 (everyone 0/0) folds by player number, whatever order the input is in ---
-{
-  const standings = makeStandings([5, 2, 8, 1, 7, 4, 6, 3].map((no) => ({ no, points: 0, diff: 0 })));
-  expectPairs("swiss (round 1 by player number)", standings, swissPairing(standings), [
-    "1-5", "2-6", "3-7", "4-8",
-  ]);
-}
-
-// --- Swiss: rematches are kept — the fold is never rearranged to dodge a previous opponent ---
-{
-  const standings = makeStandings([
-    { no: 1, points: 2, diff: 3, opponents: [3] },
-    { no: 2, points: 2, diff: 2 },
-    { no: 3, points: 2, diff: 1, opponents: [1] },
-    { no: 4, points: 2, diff: 0 },
-  ]);
-  expectPairs("swiss (rematch kept)", standings, swissPairing(standings), ["1-3", "2-4"]);
-}
-
-// --- Swiss: odd count — the lowest-ranked player takes the Bye even if they already had one ---
-{
-  const standings = rankedStandings([...repeat(2, 3), ...repeat(0, 4)]);
-  standings[6].hadBye = true;
-  expectPairs("swiss (odd count, bye to last rank)", standings, swissPairing(standings), [
-    "1-3", "2-4", "5-6", "7-BYE",
-  ]);
+  console.log(`swiss (${c.title}): OK`);
 }
 
 // --- Round Robin: 4 players, every pair meets exactly once over 3 rounds ---
