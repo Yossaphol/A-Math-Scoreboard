@@ -54,6 +54,49 @@ export async function startSelfServiceMatch(formData: FormData) {
     throw new Error("ไม่พบผู้เล่นที่ระบุในทัวร์นาเมนต์นี้");
   }
 
+  // Before opening a new match, look at the ad-hoc matches between these two that are still
+  // waiting on a second report. The form's scores are from the initiator's point of view
+  // (player1 = self), so re-orient them to each existing match's own player1/player2.
+  const pendingBetween = await prisma.match.findMany({
+    where: {
+      tournamentId: tournament.id,
+      roundId: null,
+      status: "SUBMITTED",
+      OR: [
+        { player1Id: selfPlayerId, player2Id: opponentPlayerId },
+        { player1Id: opponentPlayerId, player2Id: selfPlayerId },
+      ],
+    },
+    include: { submissions: true },
+    orderBy: { createdAt: "desc" },
+  });
+  for (const m of pendingBetween) {
+    const selfSide = m.player1Id === selfPlayerId ? "PLAYER1" : "PLAYER2";
+    const p1 = selfSide === "PLAYER1" ? player1Score : player2Score;
+    const p2 = selfSide === "PLAYER1" ? player2Score : player1Score;
+    const mine = m.submissions.find((s) => s.side === selfSide);
+    const theirs = m.submissions.find((s) => s.side !== selfSide);
+    const sameAs = (s: { player1Score: number; player2Score: number }) =>
+      s.player1Score === p1 && s.player2Score === p2;
+
+    // The opponent already logged this very game from their own phone with the same result —
+    // confirm that match rather than opening a second copy that nobody would ever confirm.
+    if (!mine && theirs && sameAs(theirs)) {
+      await resolveMatchSubmission(m.id, selfSide, p1, p2);
+      await setFlash("ผลตรงกับที่คู่แข่งส่งไว้ ยืนยันผลแล้ว");
+      revalidatePath(`/practice/play/${token}`);
+      return;
+    }
+
+    // Same result re-sent moments after the first one (double tap, retry on a slow network) —
+    // a real game takes far longer than this window, so it's a duplicate, not a new game.
+    if (mine && !theirs && sameAs(mine) && Date.now() - m.createdAt.getTime() < 2 * 60 * 1000) {
+      await setFlash("ส่งผลนี้ไปแล้ว รอคู่แข่งกรอกผลเพื่อยืนยัน");
+      revalidatePath(`/practice/play/${token}`);
+      return;
+    }
+  }
+
   const match = await prisma.match.create({
     data: {
       tournamentId: tournament.id,

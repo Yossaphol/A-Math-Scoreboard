@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { startSelfServiceMatch } from "@/lib/actions/self-service";
 import { validateWinnerScores } from "./scoreEntryValidation";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { inputClass, labelClass } from "@/components/ui/styles";
 
 type LocalWinner = "ME" | "OPPONENT" | "TIE";
@@ -139,9 +139,9 @@ export function NewSelfServiceMatchForm({
 
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
-      <Button type="submit" className="mt-4 w-full" disabled={!opponentId}>
+      <SubmitButton className="mt-4 w-full" disabled={!opponentId} pendingLabel="กำลังบันทึก...">
         บันทึกผล
-      </Button>
+      </SubmitButton>
     </Card>
   );
 }

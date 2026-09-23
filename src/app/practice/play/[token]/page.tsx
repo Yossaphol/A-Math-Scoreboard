@@ -73,6 +73,7 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
       player2: { include: { globalPlayer: true } },
       submissions: true,
     },
+    orderBy: { createdAt: "desc" },
   });
 
   const waitingOnMe = pendingMatches.filter((m) => {
@@ -102,6 +103,9 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
             {waitingOnMe.map((m) => {
               const mySide = m.player1Id === selfPlayer.id ? "PLAYER1" : "PLAYER2";
               const submissionBySide = new Map(m.submissions.map((s) => [s.side, s]));
+              const theirs = submissionBySide.get(mySide === "PLAYER1" ? "PLAYER2" : "PLAYER1");
+              const opponentName =
+                mySide === "PLAYER1" ? m.player2!.globalPlayer.name : m.player1.globalPlayer.name;
               return (
                 <ResultForm
                   key={m.id}
@@ -112,6 +116,12 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
                   player1Name={m.player1.globalPlayer.name}
                   player2Name={m.player2!.globalPlayer.name}
                   previous={m.status === "CONFLICT" ? submissionBySide.get(mySide) : undefined}
+                  opponentReport={
+                    theirs
+                      ? { byName: opponentName, player1Score: theirs.player1Score, player2Score: theirs.player2Score }
+                      : undefined
+                  }
+                  meta={`เริ่มเกมเมื่อ ${formatBangkok(m.createdAt)}`}
                   heading={
                     m.status === "CONFLICT"
                       ? "ผลไม่ตรงกัน กรุณาตรวจสอบและส่งอีกครั้ง"
@@ -141,4 +151,9 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
       </section>
     </main>
   );
+}
+
+// Same format as the Audit Log — forced to Bangkok time since the server may run in UTC.
+function formatBangkok(d: Date) {
+  return d.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" });
 }

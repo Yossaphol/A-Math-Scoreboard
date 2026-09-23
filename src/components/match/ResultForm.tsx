@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { inputClass, labelClass } from "@/components/ui/styles";
 import { validateWinnerScores, type Winner } from "./scoreEntryValidation";
 
@@ -20,6 +20,8 @@ export function ResultForm({
   player1Name,
   player2Name,
   previous,
+  opponentReport,
+  meta,
   heading,
 }: {
   action: (formData: FormData) => void;
@@ -29,23 +31,30 @@ export function ResultForm({
   player1Name: string;
   player2Name: string;
   previous?: { player1Score: number; player2Score: number };
+  // What the other side already reported for this match — shown so the player can tell which
+  // game this card is about, and used to prefill the form (when `previous` isn't set) so
+  // agreeing is a single tap.
+  opponentReport?: { byName: string; player1Score: number; player2Score: number };
+  // Small context line under the heading, e.g. when the match was started.
+  meta?: string;
   heading?: string;
 }) {
-  const initialWinner: Winner | null = previous
-    ? previous.player1Score === previous.player2Score
+  const prefill = previous ?? opponentReport;
+  const initialWinner: Winner | null = prefill
+    ? prefill.player1Score === prefill.player2Score
       ? "TIE"
-      : previous.player1Score > previous.player2Score
+      : prefill.player1Score > prefill.player2Score
         ? "PLAYER1"
         : "PLAYER2"
     : null;
-  const initialHigh = previous ? Math.max(previous.player1Score, previous.player2Score) : undefined;
-  const initialLow = previous ? Math.min(previous.player1Score, previous.player2Score) : undefined;
+  const initialHigh = prefill ? Math.max(prefill.player1Score, prefill.player2Score) : undefined;
+  const initialLow = prefill ? Math.min(prefill.player1Score, prefill.player2Score) : undefined;
 
   const [winner, setWinner] = useState<Winner | null>(initialWinner);
   const [winnerScore, setWinnerScore] = useState(initialHigh !== undefined ? String(initialHigh) : "");
   const [loserScore, setLoserScore] = useState(initialLow !== undefined ? String(initialLow) : "");
   const [tieScore, setTieScore] = useState(
-    previous && previous.player1Score === previous.player2Score ? String(previous.player1Score) : ""
+    prefill && prefill.player1Score === prefill.player2Score ? String(prefill.player1Score) : ""
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +84,13 @@ export function ResultForm({
       <input type="hidden" name="player2Score" value={player2Score} />
 
       {heading && <p className="text-sm font-medium text-neutral-900">{heading}</p>}
+      {meta && <p className="mt-0.5 text-xs text-neutral-500">{meta}</p>}
+      {opponentReport && (
+        <p className="mt-3 rounded-lg bg-black/[0.03] px-3 py-2 text-xs text-neutral-600">
+          <span className="font-medium text-neutral-800">{opponentReport.byName}</span> ส่งผลว่า:{" "}
+          {describeResult(opponentReport, player1Name, player2Name)}
+        </p>
+      )}
 
       <p className={`${labelClass} ${heading ? "mt-3" : ""} block`}>ใครชนะ?</p>
       <div className="mt-1 grid grid-cols-3 gap-2">
@@ -141,9 +157,20 @@ export function ResultForm({
 
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
-      <Button type="submit" className="mt-4 w-full">
-        {previous ? "แก้ไขผล" : "ส่งผล"}
-      </Button>
+      <SubmitButton className="mt-4 w-full">
+        {previous ? "แก้ไขผล" : opponentReport ? "ยืนยันผล" : "ส่งผล"}
+      </SubmitButton>
     </Card>
   );
+}
+
+function describeResult(
+  r: { player1Score: number; player2Score: number },
+  player1Name: string,
+  player2Name: string
+) {
+  if (r.player1Score === r.player2Score) return `เสมอ ${r.player1Score} - ${r.player2Score}`;
+  return r.player1Score > r.player2Score
+    ? `${player1Name} ชนะ ${r.player1Score} - ${r.player2Score}`
+    : `${player2Name} ชนะ ${r.player2Score} - ${r.player1Score}`;
 }
