@@ -157,6 +157,14 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
           <Pagination page={page} totalPages={totalPages} buildHref={buildHref} />
         </div>
       )}
+
+      <p className="mt-6 text-xs text-neutral-400">
+        หมายเหตุ: <span className="font-medium">ยกเลิกผูกบัญชี</span> แค่ตัดการเชื่อมระหว่างบัญชี Google
+        กับผู้เล่นคนนี้ — บัญชียังใช้ Login ได้ตามปกติ ใช้ตอนผูกผิดคนแล้วอยากให้ไปผูกกับผู้เล่นที่ถูกต้องแทน
+        ส่วน <span className="font-medium">ลบบัญชี</span> คือลบบัญชี Login ทิ้งถาวร (ต้อง Login ใหม่ถ้าจะใช้อีก)
+        ใช้ตอนเป็นบัญชีสแปมหรือผูกผิดโดยไม่ตั้งใจและอยากล้างทิ้งไปเลย — ทำได้เฉพาะบัญชีที่ยังไม่เคยเป็น Staff
+        หรือสร้าง Tournament มาก่อน
+      </p>
     </div>
   );
 }
