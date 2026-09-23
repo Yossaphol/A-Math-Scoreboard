@@ -53,10 +53,20 @@ export async function RoundDetail({ tournamentId, roundId }: { tournamentId: str
 
           const confirmed = m.status === "CONFIRMED" && m.finalPlayer1Score != null && m.finalPlayer2Score != null;
           const rawDiff = confirmed ? m.finalPlayer1Score! - m.finalPlayer2Score! : 0;
-          const diff = confirmed
-            ? cappedDiff(m.finalPlayer1Score!, m.finalPlayer2Score!, round.maximumScoreEnabled, round.maximumScore)
-            : null;
+          // A late-arrival Bye (forfeitPlayerId) is stored as 100-0 and never capped.
+          const diff = !confirmed
+            ? null
+            : m.forfeitPlayerId
+              ? rawDiff
+              : cappedDiff(m.finalPlayer1Score!, m.finalPlayer2Score!, round.maximumScoreEnabled, round.maximumScore);
           const wasCapped = diff != null && diff !== rawDiff;
+          const absentName = !confirmed
+            ? null
+            : m.forfeitPlayerId === m.player1Id
+              ? m.player1.globalPlayer.name
+              : m.forfeitPlayerId === m.player2Id
+                ? m.player2.globalPlayer.name
+                : null;
 
           return (
             <li key={m.id}>
@@ -79,7 +89,15 @@ export async function RoundDetail({ tournamentId, roundId }: { tournamentId: str
                   />
                 </div>
 
-                {confirmed ? (
+                {confirmed && absentName ? (
+                  <p className="mt-3 border-t border-neutral-100 pt-2.5 text-center text-xs text-neutral-500">
+                    <Badge variant="info" className="mr-1.5">
+                      Bye
+                    </Badge>
+                    {absentName} ไม่มา · ผลต่าง{" "}
+                    <span className="font-medium text-neutral-900">±{Math.abs(rawDiff)}</span>
+                  </p>
+                ) : confirmed ? (
                   <p className="mt-3 border-t border-neutral-100 pt-2.5 text-center text-xs text-neutral-500">
                     ผลต่าง{" "}
                     <span className="font-medium text-neutral-900">

@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { requireTournamentAccess } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { adminSetMatchResult } from "@/lib/actions/match";
+import { adminRejectByeClaim, adminSetLateBye, adminSetMatchResult } from "@/lib/actions/match";
+import { BYE_SCORE } from "@/lib/match/bye";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { deleteRound } from "@/lib/actions/pairing";
 import { cappedDiff } from "@/lib/match/diff";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -72,16 +74,21 @@ export default async function AdminRoundDetailPage(
       continue;
     }
 
+    // A late-arrival Bye (forfeitPlayerId) is stored as 100-0 and never capped.
     const diff =
       confirmed && m.finalPlayer1Score != null && m.finalPlayer2Score != null
-        ? cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, round.maximumScoreEnabled, round.maximumScore)
+        ? m.forfeitPlayerId
+          ? m.finalPlayer1Score - m.finalPlayer2Score
+          : cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, round.maximumScoreEnabled, round.maximumScore)
         : null;
+    const absentMark = (playerId: string) =>
+      confirmed && m.forfeitPlayerId === playerId ? " (ไม่มา)" : "";
 
     roundRows.push({
       tournamentPlayerId: m.player1Id,
       tournamentPlayerNo: m.player1.tournamentPlayerNo,
-      name: m.player1.globalPlayer.name,
-      opponentName: m.player2.globalPlayer.name,
+      name: m.player1.globalPlayer.name + absentMark(m.player1Id),
+      opponentName: m.player2.globalPlayer.name + absentMark(m.player2Id!),
       result: confirmed ? m.player1Result : null,
       ownScore: confirmed ? m.finalPlayer1Score : null,
       opponentScore: confirmed ? m.finalPlayer2Score : null,
@@ -90,8 +97,8 @@ export default async function AdminRoundDetailPage(
     roundRows.push({
       tournamentPlayerId: m.player2Id!,
       tournamentPlayerNo: m.player2.tournamentPlayerNo,
-      name: m.player2.globalPlayer.name,
-      opponentName: m.player1.globalPlayer.name,
+      name: m.player2.globalPlayer.name + absentMark(m.player2Id!),
+      opponentName: m.player1.globalPlayer.name + absentMark(m.player1Id),
       result: confirmed ? m.player2Result : null,
       ownScore: confirmed ? m.finalPlayer2Score : null,
       opponentScore: confirmed ? m.finalPlayer1Score : null,
@@ -189,9 +196,36 @@ export default async function AdminRoundDetailPage(
 
                 {m.status === "CONFIRMED" && !m.isBye && (
                   <p className="mt-1.5 text-xs text-neutral-500">
-                    ผล: {m.finalPlayer1Score} - {m.finalPlayer2Score}
-                    {m.editedByAdminId && " (แก้ไขโดย Admin/Staff)"}
+                    {m.forfeitPlayerId && m.player2 ? (
+                      <>
+                        <Badge variant="info" className="mr-1.5">
+                          Bye (มาสาย)
+                        </Badge>
+                        {m.forfeitPlayerId === m.player1Id
+                          ? `${m.player1.globalPlayer.name} ไม่มา — ${m.player2.globalPlayer.name} ชนะ ${BYE_SCORE}-0`
+                          : `${m.player2.globalPlayer.name} ไม่มา — ${m.player1.globalPlayer.name} ชนะ ${BYE_SCORE}-0`}
+                      </>
+                    ) : (
+                      <>
+                        ผล: {m.finalPlayer1Score} - {m.finalPlayer2Score}
+                        {m.editedByAdminId && " (แก้ไขโดย Admin/Staff)"}
+                      </>
+                    )}
                   </p>
+                )}
+
+                {m.byeClaimedById && m.player2 && m.status !== "CONFIRMED" && (
+                  <ByeClaimBanner
+                    matchId={m.id}
+                    claimantName={
+                      m.byeClaimedById === m.player1Id ? m.player1.globalPlayer.name : m.player2.globalPlayer.name
+                    }
+                    absentName={
+                      m.byeClaimedById === m.player1Id ? m.player2.globalPlayer.name : m.player1.globalPlayer.name
+                    }
+                    absentPlayerId={m.byeClaimedById === m.player1Id ? m.player2.id : m.player1Id}
+                    claimedAt={m.byeClaimedAt}
+                  />
                 )}
 
                 {m.status === "CONFLICT" && (p1Sub || p2Sub) && (
@@ -229,6 +263,16 @@ export default async function AdminRoundDetailPage(
                   </form>
                 )}
 
+                {!m.isBye && m.player2 && m.status !== "CONFIRMED" && (
+                  <LateByeControls
+                    matchId={m.id}
+                    players={[
+                      { id: m.player1Id, name: m.player1.globalPlayer.name },
+                      { id: m.player2.id, name: m.player2.globalPlayer.name },
+                    ]}
+                  />
+                )}
+
                 {!m.isBye && m.status === "CONFIRMED" && (
                   <details className="mt-2 group">
                     <summary className="cursor-pointer text-xs text-neutral-500 group-open:mb-2">
@@ -253,6 +297,15 @@ export default async function AdminRoundDetailPage(
                         บันทึก
                       </button>
                     </form>
+                    {m.player2 && (
+                      <LateByeControls
+                        matchId={m.id}
+                        players={[
+                          { id: m.player1Id, name: m.player1.globalPlayer.name },
+                          { id: m.player2.id, name: m.player2.globalPlayer.name },
+                        ]}
+                      />
+                    )}
                   </details>
                 )}
               </Card>
@@ -261,6 +314,87 @@ export default async function AdminRoundDetailPage(
         })}
       </ul>
     </div>
+  );
+}
+
+// A player at the table reported that their opponent never showed up — the claim only
+// counts once Admin/Staff approve it here.
+function ByeClaimBanner({
+  matchId,
+  claimantName,
+  absentName,
+  absentPlayerId,
+  claimedAt,
+}: {
+  matchId: string;
+  claimantName: string;
+  absentName: string;
+  absentPlayerId: string;
+  claimedAt: Date | null;
+}) {
+  return (
+    <div className="mt-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-neutral-700">
+      <p>
+        <span className="font-medium">{claimantName}</span> แจ้งว่า{" "}
+        <span className="font-medium">{absentName}</span> ไม่มา — ขอ Bye
+        {claimedAt && (
+          <span className="text-neutral-500">
+            {" "}
+            ·{" "}
+            {claimedAt.toLocaleTimeString("th-TH", { timeStyle: "short", timeZone: "Asia/Bangkok" })}
+          </span>
+        )}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <form action={adminSetLateBye}>
+          <input type="hidden" name="matchId" value={matchId} />
+          <input type="hidden" name="absentPlayerId" value={absentPlayerId} />
+          <SubmitButton size="sm">
+            อนุมัติ Bye — {claimantName} ชนะ {BYE_SCORE}-0
+          </SubmitButton>
+        </form>
+        <form action={adminRejectByeClaim}>
+          <input type="hidden" name="matchId" value={matchId} />
+          <SubmitButton size="sm" variant="secondary">
+            ปฏิเสธ
+          </SubmitButton>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Late-arrival Bye granted directly by Admin/Staff: pick who didn't show up.
+function LateByeControls({
+  matchId,
+  players,
+}: {
+  matchId: string;
+  players: [{ id: string; name: string }, { id: string; name: string }];
+}) {
+  return (
+    <details className="group mt-2">
+      <summary className="cursor-pointer text-xs text-neutral-500 group-open:mb-2">
+        ให้ Bye (คู่แข่งมาสาย/ไม่มา)
+      </summary>
+      <div className="flex flex-wrap gap-2">
+        {players.map((absent, i) => {
+          const present = players[1 - i];
+          return (
+            <form key={absent.id} action={adminSetLateBye}>
+              <input type="hidden" name="matchId" value={matchId} />
+              <input type="hidden" name="absentPlayerId" value={absent.id} />
+              <ConfirmSubmitButton
+                label={`${absent.name} ไม่มา`}
+                variant="secondary"
+                confirmTitle={`${absent.name} ไม่มา?`}
+                confirmMessage={`${present.name} ได้ Bye ชนะ ${BYE_SCORE}-0 (+${BYE_SCORE}) และ ${absent.name} แพ้ 0-${BYE_SCORE} (-${BYE_SCORE}) — แก้กลับได้ด้วยการบันทึกผลใหม่`}
+              />
+            </form>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 

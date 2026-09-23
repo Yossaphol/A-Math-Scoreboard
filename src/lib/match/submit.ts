@@ -60,6 +60,10 @@ export async function resolveMatchSubmission(
           player1Result: result.player1Result,
           player2Result: result.player2Result,
           status: "CONFIRMED",
+          // The "opponent didn't show" report was wrong or they arrived in time — both sides
+          // just agreed on a real result, so drop any pending Bye claim.
+          byeClaimedById: null,
+          byeClaimedAt: null,
         },
       });
       return { kind: "confirmed", roundId: match.roundId };

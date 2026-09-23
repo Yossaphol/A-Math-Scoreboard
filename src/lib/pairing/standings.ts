@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { cappedDiff } from "@/lib/match/diff";
 import { getMaxScoreConfig } from "@/lib/match/max-score-config";
+import { BYE_SCORE } from "@/lib/match/bye";
 import type { Standing } from "./types";
 
 /**
@@ -42,14 +43,18 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
       // Spec §19: Bye = W, Diff +100.
       if (p1) {
         p1.points += 2;
-        p1.diff += 100;
+        p1.diff += BYE_SCORE;
         p1.hadBye = true;
       }
       continue;
     }
 
-    if (p1) p1.opponents.add(m.player2Id);
-    if (p2) p2.opponents.add(m.player1Id);
+    // A late-arrival Bye (forfeitPlayerId) means these two never actually played, so they
+    // stay eligible to be paired later. It also isn't a system Bye, so hadBye stays false.
+    if (!m.forfeitPlayerId) {
+      if (p1) p1.opponents.add(m.player2Id);
+      if (p2) p2.opponents.add(m.player1Id);
+    }
 
     if (
       m.finalPlayer1Score == null ||
@@ -61,7 +66,9 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
     }
 
     const cfg = getMaxScoreConfig(m);
-    const diff = cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, cfg.enabled, cfg.max);
+    const diff = m.forfeitPlayerId
+      ? m.finalPlayer1Score - m.finalPlayer2Score
+      : cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, cfg.enabled, cfg.max);
 
     if (p1) {
       p1.diff += diff;

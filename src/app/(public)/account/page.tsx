@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { EditOwnNameForm } from "@/components/account/EditOwnNameForm";
 import { inputClass } from "@/components/ui/styles";
 import { publicTournamentPath } from "@/lib/tournament-path";
+import { BYE_SCORE } from "@/lib/match/bye";
 
 const REQUEST_STATUS_LABEL: Record<string, { label: string; variant: "warning" | "success" | "danger" }> = {
   PENDING: { label: "รอตรวจสอบ", variant: "warning" },
@@ -210,8 +211,13 @@ export default async function AccountPage(props: PageProps<"/account">) {
                           </span>
                           <span>{m.isBye ? "Bye" : `vs ${m.opponent}`}</span>
                           <span className="font-medium">
-                            {m.isBye ? "—" : `${m.myScore} - ${m.oppScore}`}{" "}
-                            {m.result && <span className="text-neutral-500">({RESULT_LABEL[m.result]})</span>}
+                            {/* Spec §19: a Bye counts as a win worth 100-0. */}
+                            {m.isBye ? `${BYE_SCORE} - 0` : `${m.myScore} - ${m.oppScore}`}{" "}
+                            {m.isBye ? (
+                              <span className="text-neutral-500">({RESULT_LABEL.WIN})</span>
+                            ) : (
+                              m.result && <span className="text-neutral-500">({RESULT_LABEL[m.result]})</span>
+                            )}
                           </span>
                         </li>
                       ))}

@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { cappedDiff } from "@/lib/match/diff";
 import { getMaxScoreConfig } from "@/lib/match/max-score-config";
+import { BYE_SCORE } from "@/lib/match/bye";
 
 export type ScoreboardRow = {
   rank: number;
@@ -89,7 +90,7 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
   for (const m of matches) {
     if (m.isBye || !m.player2Id) {
       // Spec §19: Bye = W, Diff +100.
-      apply(m.player1Id, "WIN", 100, 0, 100);
+      apply(m.player1Id, "WIN", BYE_SCORE, 0, BYE_SCORE);
       continue;
     }
     if (m.finalPlayer1Score == null || m.finalPlayer2Score == null || !m.player1Result || !m.player2Result) {
@@ -99,7 +100,8 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
     const p1Raw = m.finalPlayer1Score;
     const p2Raw = m.finalPlayer2Score;
     const cfg = getMaxScoreConfig(m);
-    const diff = cappedDiff(p1Raw, p2Raw, cfg.enabled, cfg.max);
+    // A late-arrival Bye is stored as 100-0 and is never capped — no game was played.
+    const diff = m.forfeitPlayerId ? p1Raw - p2Raw : cappedDiff(p1Raw, p2Raw, cfg.enabled, cfg.max);
 
     apply(m.player1Id, m.player1Result, p1Raw, p2Raw, diff);
     apply(m.player2Id, m.player2Result, p2Raw, p1Raw, -diff);

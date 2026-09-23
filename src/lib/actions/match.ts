@@ -10,6 +10,8 @@ import { maybeCompleteRound } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
 import { publicTournamentPath } from "@/lib/tournament-path";
 import { logAdminAction } from "@/lib/audit-log";
+import { getActiveMatchForTable } from "@/lib/match/lookup";
+import { BYE_SCORE, forfeitResult } from "@/lib/match/bye";
 
 const submitSchema = z.object({
   matchId: z.string().min(1),
@@ -99,6 +101,10 @@ export async function adminSetMatchResult(formData: FormData) {
       player2Result: result.player2Result,
       status: "CONFIRMED",
       editedByAdminId: admin.id,
+      // Entering real scores turns a late-arrival Bye back into a played game.
+      forfeitPlayerId: null,
+      byeClaimedById: null,
+      byeClaimedAt: null,
     },
   });
   if (match.roundId) {
@@ -118,4 +124,149 @@ export async function adminSetMatchResult(formData: FormData) {
   await setFlash("บันทึกผลแล้ว");
   revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);
   revalidatePath(publicTournamentPath({ id: match.tournamentId, mode: match.tournament.mode }));
+}
+
+const tableByeSchema = z.object({
+  matchId: z.string().min(1),
+  qrToken: z.string().min(1),
+  side: z.enum(["PLAYER1", "PLAYER2"]).optional(),
+});
+
+// Resolves the match a table-QR form posted about, or null when the page was stale (round
+// moved on, match already decided) — same "expected, not exceptional" handling as above.
+async function openTableMatch(qrToken: string, matchId: string) {
+  const active = await getActiveMatchForTable(qrToken);
+  if ("error" in active || active.match.id !== matchId) return null;
+  const m = active.match;
+  if (m.isBye || !m.player2Id || m.status === "CONFIRMED" || m.status === "BYE") return null;
+  return m;
+}
+
+// Late-arrival Bye, player side: someone at the table reports that their opponent never
+// showed up. Public like submitMatchResult (no account at the table) — which is exactly why
+// this only records the claim; it counts once Admin/Staff approve it via adminSetLateBye.
+export async function claimLateBye(formData: FormData) {
+  const parsed = tableByeSchema.safeParse({
+    matchId: formData.get("matchId"),
+    qrToken: formData.get("qrToken"),
+    side: formData.get("side"),
+  });
+  if (!parsed.success || !parsed.data.side) throw new Error("ข้อมูลไม่ครบ");
+  const { matchId, qrToken, side } = parsed.data;
+
+  const m = await openTableMatch(qrToken, matchId);
+  if (!m) {
+    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
+  } else {
+    await prisma.match.update({
+      where: { id: matchId },
+      data: {
+        byeClaimedById: side === "PLAYER1" ? m.player1Id : m.player2Id,
+        byeClaimedAt: new Date(),
+      },
+    });
+    await setFlash("แจ้งแล้ว รอ Admin/Staff อนุมัติ Bye");
+    if (m.roundId) revalidatePath(`/admin/tournaments/${m.tournamentId}/rounds/${m.roundId}`);
+  }
+  revalidatePath(`/table/${qrToken}`);
+}
+
+// The opponent turned up after all — anyone at the table can withdraw the pending claim.
+export async function cancelLateByeClaim(formData: FormData) {
+  const parsed = tableByeSchema.safeParse({
+    matchId: formData.get("matchId"),
+    qrToken: formData.get("qrToken"),
+  });
+  if (!parsed.success) throw new Error("ข้อมูลไม่ครบ");
+  const { matchId, qrToken } = parsed.data;
+
+  const m = await openTableMatch(qrToken, matchId);
+  if (!m) {
+    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
+  } else {
+    await prisma.match.update({
+      where: { id: matchId },
+      data: { byeClaimedById: null, byeClaimedAt: null },
+    });
+    await setFlash("ยกเลิกคำขอ Bye แล้ว");
+    if (m.roundId) revalidatePath(`/admin/tournaments/${m.tournamentId}/rounds/${m.roundId}`);
+  }
+  revalidatePath(`/table/${qrToken}`);
+}
+
+const lateByeSchema = z.object({
+  matchId: z.string().min(1),
+  absentPlayerId: z.string().min(1),
+});
+
+// Admin/Staff side of the late-arrival Bye — used both to approve a player's claim and to
+// grant one directly. The present player gets W 100-0 (+100), the absent one L 0-100 (-100).
+export async function adminSetLateBye(formData: FormData) {
+  const parsed = lateByeSchema.safeParse({
+    matchId: formData.get("matchId"),
+    absentPlayerId: formData.get("absentPlayerId"),
+  });
+  if (!parsed.success) throw new Error("ข้อมูลไม่ครบ");
+  const { matchId, absentPlayerId } = parsed.data;
+
+  const match = await prisma.match.findUniqueOrThrow({
+    where: { id: matchId },
+    include: {
+      tournament: { select: { mode: true } },
+      player1: { include: { globalPlayer: true } },
+      player2: { include: { globalPlayer: true } },
+    },
+  });
+  const admin = await assertTournamentAccess(match.tournamentId);
+  if (match.isBye || !match.player2) {
+    throw new Error("Match นี้เป็น Bye อยู่แล้ว");
+  }
+  if (absentPlayerId !== match.player1Id && absentPlayerId !== match.player2Id) {
+    throw new Error("ผู้เล่นนี้ไม่ได้อยู่ใน Match นี้");
+  }
+
+  await prisma.match.update({
+    where: { id: matchId },
+    data: {
+      ...forfeitResult(match, absentPlayerId),
+      status: "CONFIRMED",
+      forfeitPlayerId: absentPlayerId,
+      byeClaimedById: null,
+      byeClaimedAt: null,
+      editedByAdminId: admin.id,
+    },
+  });
+  if (match.roundId) {
+    await maybeCompleteRound(match.roundId);
+    revalidatePath(`/admin/tournaments/${match.tournamentId}/rounds/${match.roundId}`);
+  }
+
+  const player1Absent = absentPlayerId === match.player1Id;
+  const presentName = (player1Absent ? match.player2 : match.player1).globalPlayer.name;
+  const absentName = (player1Absent ? match.player1 : match.player2).globalPlayer.name;
+  await logAdminAction({
+    actorId: admin.id,
+    action: "match.late_bye",
+    summary: `ให้ Bye: ${presentName} ชนะ ${BYE_SCORE}-0 เพราะ ${absentName} ไม่มา`,
+    targetType: "Match",
+    targetId: match.id,
+  });
+
+  await setFlash(`ให้ Bye แล้ว — ${presentName} ชนะ ${BYE_SCORE}-0`);
+  revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);
+  revalidatePath(publicTournamentPath({ id: match.tournamentId, mode: match.tournament.mode }));
+}
+
+// Admin/Staff turn down a player's "opponent didn't show" claim (e.g. the opponent is here).
+export async function adminRejectByeClaim(formData: FormData) {
+  const matchId = String(formData.get("matchId") ?? "");
+  const match = await prisma.match.findUniqueOrThrow({ where: { id: matchId } });
+  await assertTournamentAccess(match.tournamentId);
+
+  await prisma.match.update({
+    where: { id: matchId },
+    data: { byeClaimedById: null, byeClaimedAt: null },
+  });
+  await setFlash("ปฏิเสธคำขอ Bye แล้ว");
+  if (match.roundId) revalidatePath(`/admin/tournaments/${match.tournamentId}/rounds/${match.roundId}`);
 }

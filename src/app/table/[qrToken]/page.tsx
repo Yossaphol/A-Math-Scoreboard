@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { getActiveMatchForTable } from "@/lib/match/lookup";
-import { submitMatchResult } from "@/lib/actions/match";
+import { cancelLateByeClaim, claimLateBye, submitMatchResult } from "@/lib/actions/match";
+import { BYE_SCORE } from "@/lib/match/bye";
 import { ResultForm } from "@/components/match/ResultForm";
 import { Card } from "@/components/ui/Card";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const RESULT_LABEL: Record<string, string> = { WIN: "ชนะ", TIE: "เสมอ", LOSS: "แพ้" };
 
@@ -45,6 +48,15 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
             {tournament.name} · Table {table.tableNumber}
           </p>
           <p className="mt-2 text-sm font-medium text-success">ผลการแข่งขันยืนยันแล้ว</p>
+          {match.forfeitPlayerId && (
+            <p className="mt-1 text-xs text-neutral-500">
+              Bye —{" "}
+              {match.forfeitPlayerId === match.player1Id
+                ? match.player1.globalPlayer.name
+                : match.player2!.globalPlayer.name}{" "}
+              ไม่มา
+            </p>
+          )}
           <div className="mt-6 flex items-center justify-center gap-6 text-sm">
             <PlayerResult
               name={match.player1.globalPlayer.name}
@@ -68,6 +80,11 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
   const player1Name = match.player1.globalPlayer.name;
   const player2Name = match.player2!.globalPlayer.name;
   const chosenSide = sideParam === "PLAYER1" || sideParam === "PLAYER2" ? sideParam : undefined;
+  const claimantName = match.byeClaimedById
+    ? match.byeClaimedById === match.player1Id
+      ? player1Name
+      : player2Name
+    : null;
 
   return (
     <main className="mx-auto max-w-md px-4 py-10">
@@ -78,6 +95,22 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
         {player1Name} vs {player2Name}
       </h1>
       <p className="text-center text-xs text-neutral-400">รอบที่ {round.roundNumber}</p>
+
+      {claimantName && (
+        <Card className="mt-4 text-center">
+          <p className="text-sm text-neutral-800">
+            {claimantName} แจ้งว่า {match.byeClaimedById === match.player1Id ? player2Name : player1Name} ไม่มา
+          </p>
+          <p className="mt-0.5 text-xs text-neutral-500">รอ Admin/Staff อนุมัติ Bye</p>
+          <form action={cancelLateByeClaim} className="mt-3">
+            <input type="hidden" name="matchId" value={match.id} />
+            <input type="hidden" name="qrToken" value={qrToken} />
+            <SubmitButton size="sm" variant="secondary">
+              คู่แข่งมาแล้ว — ยกเลิกคำขอ
+            </SubmitButton>
+          </form>
+        </Card>
+      )}
 
       {match.status === "CONFLICT" && (
         <Card className="mt-4 !bg-red-50/80 border-red-200 text-center">
@@ -130,6 +163,19 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               player2Name={player2Name}
               previous={submissionBySide.get(chosenSide)}
             />
+            {!claimantName && (
+              <form action={claimLateBye} className="text-center">
+                <input type="hidden" name="matchId" value={match.id} />
+                <input type="hidden" name="qrToken" value={qrToken} />
+                <input type="hidden" name="side" value={chosenSide} />
+                <ConfirmSubmitButton
+                  label="คู่แข่งไม่มา? แจ้งขอ Bye"
+                  variant="ghost"
+                  confirmTitle={`${chosenSide === "PLAYER1" ? player2Name : player1Name} ไม่มา?`}
+                  confirmMessage={`แจ้ง Admin/Staff ว่าคู่แข่งไม่มา ถ้าอนุมัติ คุณจะได้ Bye ชนะ ${BYE_SCORE}-0 — ถ้าคู่แข่งมาทันและส่งผลตรงกันทั้งสองฝั่ง คำขอนี้จะถูกยกเลิกเอง`}
+                />
+              </form>
+            )}
           </>
         ) : (
           // Ask explicitly which side is about to submit, instead of guessing from

@@ -284,6 +284,18 @@ model Match {
 
   status MatchStatus @default(PENDING)
 
+  // Late-arrival Bye — distinct from the odd-player-count Bye above (isBye, no opponent at
+  // all). Both players were paired, but this one never showed up: the match is CONFIRMED with
+  // the present player winning 100-0 (+100) and this one losing 0-100 (-100), never capped by
+  // Maximum Score. Null for every game that was actually played. See src/lib/match/bye.ts.
+  forfeitPlayerId String?
+
+  // A player at the table reported "my opponent didn't show up". The table QR page has no
+  // login, so a claim alone is never trusted — it waits for Admin/Staff approval, which sets
+  // forfeitPlayerId. Cleared once the match gets a result by any route.
+  byeClaimedById String?
+  byeClaimedAt   DateTime?
+
   editedByAdminId String?
   editedByAdmin   User?   @relation("MatchEditedByAdmin", fields: [editedByAdminId], references: [id])
 
