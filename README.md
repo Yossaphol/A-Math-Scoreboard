@@ -80,6 +80,10 @@ ongoing/confirmed = green, completed = gray, ADMIN = red, STAFF = blue (`info` v
   database region (`ap-southeast-1`, Singapore) being different was the root cause of a real
   production slowness issue — every DB round trip crossed the Pacific. `vercel.json`'s
   `"regions": ["sin1"]` keeps functions next to the database.
+- **No branch previews**: `DATABASE_URL` exists only in the Production environment, so a
+  Preview build fails at `prisma migrate deploy` ("datasource.url property is required").
+  `vercel.json`'s `git.deploymentEnabled` therefore only lets `main` auto-deploy — pushing
+  any other branch to GitHub doesn't trigger a (failing) preview build.
 - **First Admin on a fresh production database**: the seed script never runs against
   production, so there's a bootstrap step. `prisma/promote-admin.ts` upserts a `User` row to
   `role: "ADMIN"` by email — run once with the production `DATABASE_URL`:
