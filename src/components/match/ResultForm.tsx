@@ -1,18 +1,20 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { submitMatchResult } from "@/lib/actions/match";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { inputClass, labelClass } from "@/components/ui/styles";
-
-type Winner = "PLAYER1" | "PLAYER2" | "TIE";
+import { validateWinnerScores, type Winner } from "./scoreEntryValidation";
 
 // Spec §13 still applies: this is one of up to two independent reports of the SAME match,
-// compared server-side in submitMatchResult — only the input shape changed (winner/loser
-// instead of self/opponent) to cut the fields a player has to fill in half.
+// compared server-side (in submitMatchResult for the table-QR flow, submitSelfServiceResult
+// for the self-service flow — both share the same resolveMatchSubmission engine) — only the
+// input shape changed (winner/loser instead of self/opponent) to cut the fields a player has
+// to fill in half. `action` and `extraHiddenFields` are generic so both flows can reuse this
+// same winner-picker UI/validation without duplicating it.
 export function ResultForm({
-  qrToken,
+  action,
+  extraHiddenFields,
   matchId,
   side,
   player1Name,
@@ -20,7 +22,8 @@ export function ResultForm({
   previous,
   heading,
 }: {
-  qrToken: string;
+  action: (formData: FormData) => void;
+  extraHiddenFields: Record<string, string>;
   matchId: string;
   side: "PLAYER1" | "PLAYER2";
   player1Name: string;
@@ -52,35 +55,21 @@ export function ResultForm({
     winner === "PLAYER2" ? winnerScore : winner === "PLAYER1" ? loserScore : tieScore;
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    if (!winner) {
+    const message = validateWinnerScores(winner, winnerScore, loserScore, tieScore);
+    if (message) {
       e.preventDefault();
-      setError("กรุณาเลือกผู้ชนะ");
-      return;
-    }
-    if (winner === "TIE") {
-      if (tieScore === "") {
-        e.preventDefault();
-        setError("กรุณากรอกคะแนน");
-      }
-      return;
-    }
-    if (winnerScore === "" || loserScore === "") {
-      e.preventDefault();
-      setError("กรุณากรอกคะแนนให้ครบ");
-      return;
-    }
-    if (Number(winnerScore) <= Number(loserScore)) {
-      e.preventDefault();
-      setError("คะแนนผู้ชนะต้องมากกว่าคะแนนผู้แพ้");
+      setError(message);
       return;
     }
     setError(null);
   }
 
   return (
-    <Card as="form" action={submitMatchResult} onSubmit={handleSubmit}>
+    <Card as="form" action={action} onSubmit={handleSubmit}>
       <input type="hidden" name="matchId" value={matchId} />
-      <input type="hidden" name="qrToken" value={qrToken} />
+      {Object.entries(extraHiddenFields).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
       <input type="hidden" name="side" value={side} />
       <input type="hidden" name="player1Score" value={player1Score} />
       <input type="hidden" name="player2Score" value={player2Score} />

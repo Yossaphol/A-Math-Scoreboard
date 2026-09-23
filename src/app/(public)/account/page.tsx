@@ -156,9 +156,12 @@ export default async function AccountPage(props: PageProps<"/account">) {
           ) : (
             <div className="space-y-4">
               {tournamentPlayers.map((tp) => {
+                // A self-service ad-hoc match (Practice mode, no staff Round) has round: null —
+                // sort those by when they were played instead, ordered after every numbered round.
                 const matches = [
                   ...tp.matchesAsPlayer1.map((m) => ({
-                    roundNumber: m.round.roundNumber,
+                    roundNumber: m.round?.roundNumber ?? null,
+                    createdAt: m.createdAt,
                     opponent: m.player2?.globalPlayer.name ?? "Bye",
                     myScore: m.finalPlayer1Score,
                     oppScore: m.finalPlayer2Score,
@@ -166,14 +169,20 @@ export default async function AccountPage(props: PageProps<"/account">) {
                     isBye: m.isBye,
                   })),
                   ...tp.matchesAsPlayer2.map((m) => ({
-                    roundNumber: m.round.roundNumber,
+                    roundNumber: m.round?.roundNumber ?? null,
+                    createdAt: m.createdAt,
                     opponent: m.player1.globalPlayer.name,
                     myScore: m.finalPlayer2Score,
                     oppScore: m.finalPlayer1Score,
                     result: m.player2Result,
                     isBye: false,
                   })),
-                ].sort((a, b) => a.roundNumber - b.roundNumber);
+                ].sort((a, b) => {
+                  if (a.roundNumber != null && b.roundNumber != null) return a.roundNumber - b.roundNumber;
+                  if (a.roundNumber != null) return -1;
+                  if (b.roundNumber != null) return 1;
+                  return a.createdAt.getTime() - b.createdAt.getTime();
+                });
 
                 return (
                   <Card key={tp.id}>
@@ -195,7 +204,9 @@ export default async function AccountPage(props: PageProps<"/account">) {
                     <ul className="mt-3 divide-y divide-neutral-100">
                       {matches.map((m, i) => (
                         <li key={i} className="flex items-center justify-between py-2 text-sm">
-                          <span className="text-neutral-500">R{m.roundNumber}</span>
+                          <span className="text-neutral-500">
+                            {m.roundNumber != null ? `R${m.roundNumber}` : "ฝึกซ้อม"}
+                          </span>
                           <span>{m.isBye ? "Bye" : `vs ${m.opponent}`}</span>
                           <span className="font-medium">
                             {m.isBye ? "—" : `${m.myScore} - ${m.oppScore}`}{" "}

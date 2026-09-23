@@ -1,4 +1,5 @@
 import { getActiveMatchForTable } from "@/lib/match/lookup";
+import { submitMatchResult } from "@/lib/actions/match";
 import { ResultForm } from "@/components/match/ResultForm";
 import { Card } from "@/components/ui/Card";
 
@@ -88,7 +89,8 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
           // Both sides already reported and disagreed — both need to review and resubmit.
           <>
             <ResultForm
-              qrToken={qrToken}
+              action={submitMatchResult}
+              extraHiddenFields={{ qrToken }}
               matchId={match.id}
               side="PLAYER1"
               player1Name={player1Name}
@@ -97,7 +99,8 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               heading="ผลที่ฝั่งแรกส่ง"
             />
             <ResultForm
-              qrToken={qrToken}
+              action={submitMatchResult}
+              extraHiddenFields={{ qrToken }}
               matchId={match.id}
               side="PLAYER2"
               player1Name={player1Name}
@@ -118,7 +121,8 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               </p>
             )}
             <ResultForm
-              qrToken={qrToken}
+              action={submitMatchResult}
+              extraHiddenFields={{ qrToken }}
               matchId={match.id}
               side={submissionBySide.has("PLAYER1") ? "PLAYER2" : "PLAYER1"}
               player1Name={player1Name}

@@ -11,6 +11,7 @@ const TABS = [
   { href: "/players", label: "Players" },
   { href: "/rounds", label: "Rounds" },
   { href: "/tables", label: "Tables / QR" },
+  { href: "/practice", label: "Practice Link" },
   { href: "/staff", label: "Staff" },
   { href: "/settings", label: "Settings" },
 ];
@@ -22,7 +23,11 @@ export default async function TournamentAdminLayout(props: LayoutProps<"/admin/t
   const tournament = await prisma.tournament.findUnique({ where: { id } });
   if (!tournament) notFound();
 
-  const tabs = user.role === "ADMIN" ? TABS : TABS.filter((t) => t.label !== "Staff");
+  const tabs = TABS.filter(
+    (t) =>
+      (t.label !== "Staff" || user.role === "ADMIN") &&
+      (t.label !== "Practice Link" || tournament.mode === "PRACTICE")
+  );
   const status = TOURNAMENT_STATUS_BADGE[tournament.status];
 
   return (

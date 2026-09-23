@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { cappedDiff } from "@/lib/match/diff";
+import { getMaxScoreConfig } from "@/lib/match/max-score-config";
 
 export type ScoreboardRow = {
   rank: number;
@@ -52,8 +53,10 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
     });
   }
 
+  // Queried directly by tournamentId (not through round: { tournamentId }) so self-service
+  // ad-hoc matches (roundId null) are included too.
   const matches = await prisma.match.findMany({
-    where: { round: { tournamentId }, status: { in: ["CONFIRMED", "BYE"] } },
+    where: { tournamentId, status: { in: ["CONFIRMED", "BYE"] } },
     include: { round: true },
   });
 
@@ -95,7 +98,8 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
 
     const p1Raw = m.finalPlayer1Score;
     const p2Raw = m.finalPlayer2Score;
-    const diff = cappedDiff(p1Raw, p2Raw, m.round.maximumScoreEnabled, m.round.maximumScore);
+    const cfg = getMaxScoreConfig(m);
+    const diff = cappedDiff(p1Raw, p2Raw, cfg.enabled, cfg.max);
 
     apply(m.player1Id, m.player1Result, p1Raw, p2Raw, diff);
     apply(m.player2Id, m.player2Result, p2Raw, p1Raw, -diff);

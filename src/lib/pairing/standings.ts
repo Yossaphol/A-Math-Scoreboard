@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { cappedDiff } from "@/lib/match/diff";
+import { getMaxScoreConfig } from "@/lib/match/max-score-config";
 import type { Standing } from "./types";
 
 /**
@@ -25,8 +26,11 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
     });
   }
 
+  // Queried directly by tournamentId (not through round: { tournamentId }) so self-service
+  // ad-hoc matches (roundId null, spec: Practice self-service needs no staff Round) are
+  // included too — Scoreboard and pairing Standings must stay in lockstep on this.
   const matches = await prisma.match.findMany({
-    where: { round: { tournamentId }, status: { in: ["CONFIRMED", "BYE"] } },
+    where: { tournamentId, status: { in: ["CONFIRMED", "BYE"] } },
     include: { round: true },
   });
 
@@ -56,12 +60,8 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
       continue;
     }
 
-    const diff = cappedDiff(
-      m.finalPlayer1Score,
-      m.finalPlayer2Score,
-      m.round.maximumScoreEnabled,
-      m.round.maximumScore
-    );
+    const cfg = getMaxScoreConfig(m);
+    const diff = cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, cfg.enabled, cfg.max);
 
     if (p1) {
       p1.diff += diff;

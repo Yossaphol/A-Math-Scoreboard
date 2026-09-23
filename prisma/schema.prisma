@@ -144,6 +144,13 @@ model Tournament {
   // COMPETITION (enforced in createTournament); Admin/Staff with access always bypass it.
   pinCode String?
 
+  // Practice-mode-only, tournament-wide link/QR for self-service ad-hoc scoring — lets a
+  // player log a game with no staff-created Round at all. Generated unconditionally for
+  // every PRACTICE tournament (no opt-out, unlike pinCode). Never set for COMPETITION.
+  // Distinct from TournamentTable.qrToken, which is per-table and only resolves while a
+  // staff-run Round is CONFIRMED.
+  selfServiceToken String? @unique
+
   createdById String
   createdBy   User     @relation("TournamentCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -153,6 +160,7 @@ model Tournament {
   players TournamentPlayer[]
   rounds  Round[]
   tables  TournamentTable[]
+  matches Match[]
 
   @@index([status])
 }
@@ -228,13 +236,21 @@ model TournamentTable {
   @@unique([tournamentId, tableNumber])
 }
 
-// One Game/Match between two Tournament Players (or a Bye) within a Round.
+// One Game/Match between two Tournament Players (or a Bye) within a Round — or, for a
+// Practice-mode self-service match, no Round at all (roundId null, spec: no staff action
+// required).
 model Match {
   id      String           @id @default(cuid())
-  roundId String
-  round   Round            @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  roundId String?
+  round   Round?           @relation(fields: [roundId], references: [id], onDelete: Cascade)
   tableId String?
   table   TournamentTable? @relation(fields: [tableId], references: [id])
+
+  // Denormalized and ALWAYS required (unlike roundId) so Scoreboard/Standings can query
+  // every Match — round-based or self-service ad-hoc — directly by tournament, without
+  // joining through Round (which a self-service match doesn't have).
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
 
   player1Id String
   // Required (unlike player2), so it can't fall back to SetNull — must cascade, otherwise a
@@ -247,6 +263,13 @@ model Match {
   // First/Second assignment for this game, only meaningful when Tournament.useFirstSecond (spec §11).
   firstPlayerId  String?
   secondPlayerId String?
+
+  // Only populated for self-service ad-hoc matches (roundId null), frozen at creation time
+  // from Tournament.defaultMaximumScore — mirrors what Round.maximumScoreEnabled/maximumScore
+  // do for round-based matches, which have no need for these and keep reading from Round
+  // unchanged. See src/lib/match/max-score-config.ts for the one place that picks between them.
+  maximumScoreEnabled Boolean?
+  maximumScore        Int?
 
   // Each side independently reports the full result (spec §13) — compared in submissions
   // below, never taken from a single side alone.
@@ -267,6 +290,7 @@ model Match {
   updatedAt DateTime @updatedAt
 
   @@index([roundId])
+  @@index([tournamentId])
   @@index([player1Id])
   @@index([player2Id])
 }

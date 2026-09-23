@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "./Button";
 import { ToggleGroup } from "./ToggleGroup";
 import { inputClass, labelClass } from "./styles";
+import type { TournamentMode } from "@/generated/prisma/enums";
 
 /** Corner "+ New Round" trigger — opens a form for Generate Pairing (spec §9/§10) in a modal
  * instead of a dedicated tab, since it's a one-off action rather than a page you browse. */
@@ -11,10 +12,16 @@ export function NewRoundModal({
   tournamentId,
   defaultMaximumScore,
   action,
+  mode,
+  activePlayers,
 }: {
   tournamentId: string;
   defaultMaximumScore: number;
   action: (formData: FormData) => void;
+  // Practice-only: lets staff pick a subset of the roster to play this round (spec §7 — not
+  // everyone has to play every round). Ignored for COMPETITION, which always pairs everyone.
+  mode: TournamentMode;
+  activePlayers: { id: string; tournamentPlayerNo: number; name: string }[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -54,6 +61,20 @@ export function NewRoundModal({
                   className={inputClass}
                 />
               </ToggleGroup>
+
+              {mode === "PRACTICE" && (
+                <div>
+                  <p className={labelClass}>ผู้เล่นที่จะจับคู่รอบนี้ (ค่าเริ่มต้น: ทุกคน)</p>
+                  <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-neutral-200 p-2">
+                    {activePlayers.map((p) => (
+                      <label key={p.id} className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="playerIds" value={p.id} defaultChecked />
+                        {p.name} <span className="text-neutral-400">#{p.tournamentPlayerNo}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-1">
                 <button

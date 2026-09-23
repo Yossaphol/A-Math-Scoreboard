@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertTournamentAccess } from "@/lib/dal";
 import { computeResult } from "@/lib/match/result";
+import { resolveMatchSubmission } from "@/lib/match/submit";
 import { maybeCompleteRound } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
 
@@ -33,65 +34,19 @@ export async function submitMatchResult(formData: FormData) {
   }
   const { matchId, side, player1Score, player2Score, qrToken } = parsed.data;
 
-  // Two devices (one per side) can submit within milliseconds of each other, e.g. both
-  // resubmitting right after a Score Conflict. Without a lock, both could read the other
-  // side's submission as "missing"/stale at the same time and each decide the comparison on
-  // its own, leaving the match on the wrong status. The FOR UPDATE lock on the Match row
-  // forces the second submission to wait and then re-read fresh data, so the upsert + compare
-  // + status-write always happens against the true latest state.
-  const outcome = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<{ id: string; isBye: boolean; status: string; roundId: string }[]>`
-      SELECT id, "isBye", status, "roundId" FROM "Match" WHERE id = ${matchId} FOR UPDATE
-    `;
-    const match = locked[0];
-    if (!match) throw new Error("ไม่พบ Match");
-    // Expected, not exceptional: a stale page (the match was already confirmed by the other
-    // side, or turned out to be a Bye) still shows an active form. This used to throw, which
-    // with no error boundary crashed the whole page ("This page couldn't load") instead of
-    // just showing the now-current state — so it's handled as a normal outcome instead.
-    if (match.isBye) return { kind: "already-bye" as const };
-    if (match.status === "CONFIRMED") return { kind: "already-confirmed" as const };
-
-    await tx.matchSubmission.upsert({
-      where: { matchId_side: { matchId, side } },
-      update: { player1Score, player2Score },
-      create: { matchId, side, player1Score, player2Score },
-    });
-
-    const submissions = await tx.matchSubmission.findMany({ where: { matchId } });
-    const mine = submissions.find((s) => s.side === side)!;
-    const other = submissions.find((s) => s.side !== side);
-
-    if (!other) {
-      await tx.match.update({ where: { id: matchId }, data: { status: "SUBMITTED" } });
-      return { kind: "waiting" as const };
-    }
-
-    if (other.player1Score === mine.player1Score && other.player2Score === mine.player2Score) {
-      const result = computeResult(mine.player1Score, mine.player2Score);
-      await tx.match.update({
-        where: { id: matchId },
-        data: {
-          finalPlayer1Score: mine.player1Score,
-          finalPlayer2Score: mine.player2Score,
-          player1Result: result.player1Result,
-          player2Result: result.player2Result,
-          status: "CONFIRMED",
-        },
-      });
-      return { kind: "confirmed" as const, roundId: match.roundId };
-    }
-
-    await tx.match.update({ where: { id: matchId }, data: { status: "CONFLICT" } });
-    return { kind: "conflict" as const };
-  });
+  // Expected, not exceptional: a stale page (the match was already confirmed by the other
+  // side, or turned out to be a Bye) still shows an active form. This used to throw, which
+  // with no error boundary crashed the whole page ("This page couldn't load") instead of
+  // just showing the now-current state — so resolveMatchSubmission returns it as a normal
+  // outcome instead.
+  const outcome = await resolveMatchSubmission(matchId, side, player1Score, player2Score);
 
   if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
     await setFlash("ผลถูกยืนยันแล้ว — หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
   } else if (outcome.kind === "waiting") {
     await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
   } else if (outcome.kind === "confirmed") {
-    await maybeCompleteRound(outcome.roundId);
+    if (outcome.roundId) await maybeCompleteRound(outcome.roundId);
     await setFlash("ผลตรงกัน ยืนยันผลแล้ว");
   } else {
     await setFlash("ผลไม่ตรงกับอีกฝ่าย รอ Admin/Staff ตรวจสอบ", "error");
@@ -119,11 +74,8 @@ export async function adminSetMatchResult(formData: FormData) {
   }
   const { matchId, player1Score, player2Score } = parsed.data;
 
-  const match = await prisma.match.findUniqueOrThrow({
-    where: { id: matchId },
-    include: { round: true },
-  });
-  const admin = await assertTournamentAccess(match.round.tournamentId);
+  const match = await prisma.match.findUniqueOrThrow({ where: { id: matchId } });
+  const admin = await assertTournamentAccess(match.tournamentId);
   if (match.isBye) {
     throw new Error("Match นี้เป็น Bye ไม่ต้องกรอกคะแนน");
   }
@@ -140,10 +92,12 @@ export async function adminSetMatchResult(formData: FormData) {
       editedByAdminId: admin.id,
     },
   });
-  await maybeCompleteRound(match.roundId);
+  if (match.roundId) {
+    await maybeCompleteRound(match.roundId);
+    revalidatePath(`/admin/tournaments/${match.tournamentId}/rounds/${match.roundId}`);
+  }
 
   await setFlash("บันทึกผลแล้ว");
-  revalidatePath(`/admin/tournaments/${match.round.tournamentId}/rounds/${match.roundId}`);
-  revalidatePath(`/admin/tournaments/${match.round.tournamentId}/scoreboard`);
-  revalidatePath(`/t/${match.round.tournamentId}`);
+  revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);
+  revalidatePath(`/t/${match.tournamentId}`);
 }

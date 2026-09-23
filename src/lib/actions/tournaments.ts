@@ -21,6 +21,10 @@ function generatePinCode() {
   return String(Math.floor(1000 + Math.random() * 9000)); // 4 digits, 1000-9999
 }
 
+function generateSelfServiceToken() {
+  return crypto.randomUUID().replace(/-/g, "");
+}
+
 // Spec §7: player-limit and game-count toggles are independent settings — never merged.
 export async function createTournament(formData: FormData) {
   const admin = await assertAdmin();
@@ -47,6 +51,10 @@ export async function createTournament(formData: FormData) {
   // submitted, since anyone can already view Competition results publicly by design.
   const pinCode = data.mode === "PRACTICE" && setPin ? generatePinCode() : null;
 
+  // Self-service ad-hoc scoring link — Practice-only, generated unconditionally (unlike the
+  // PIN, there's no opt-out) since it's the only way to reach that flow at all.
+  const selfServiceToken = data.mode === "PRACTICE" ? generateSelfServiceToken() : null;
+
   const tournament = await prisma.tournament.create({
     data: {
       name: data.name,
@@ -60,6 +68,7 @@ export async function createTournament(formData: FormData) {
       // Only a default seed for new Games — never a Tournament-wide cap (spec §8).
       defaultMaximumScore: data.defaultMaximumScore ?? 350,
       pinCode,
+      selfServiceToken,
       createdById: admin.id,
     },
   });
@@ -162,4 +171,24 @@ export async function unlockPracticeTournament(formData: FormData) {
 
   revalidatePath(`/t/${tournamentId}`);
   redirect(`/t/${tournamentId}`);
+}
+
+// Lazily backfills a selfServiceToken for a Practice tournament created before this feature
+// existed — new tournaments already get one unconditionally in createTournament. Race-safe:
+// a conditional update (only where the token is still null) means two concurrent callers
+// can't clobber a token that's already been printed/shared.
+export async function ensureSelfServiceToken(tournamentId: string): Promise<string> {
+  const tournament = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+  if (tournament.selfServiceToken) return tournament.selfServiceToken;
+
+  const token = generateSelfServiceToken();
+  const updated = await prisma.tournament.updateMany({
+    where: { id: tournamentId, selfServiceToken: null },
+    data: { selfServiceToken: token },
+  });
+  if (updated.count === 0) {
+    const fresh = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    return fresh.selfServiceToken!;
+  }
+  return token;
 }

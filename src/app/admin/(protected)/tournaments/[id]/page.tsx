@@ -42,6 +42,15 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
     ? await getFirstSecondTotals(id)
     : new Map<string, number>();
 
+  const activePlayers =
+    tournament.mode === "PRACTICE"
+      ? await prisma.tournamentPlayer.findMany({
+          where: { tournamentId: id, status: "ACTIVE" },
+          include: { globalPlayer: true },
+          orderBy: { tournamentPlayerNo: "asc" },
+        })
+      : [];
+
   const isPreview = currentRound?.status === "DRAFT" || currentRound?.status === "PREVIEW";
 
   return (
@@ -54,6 +63,12 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
               tournamentId={id}
               defaultMaximumScore={tournament.defaultMaximumScore ?? 350}
               action={startPairing}
+              mode={tournament.mode}
+              activePlayers={activePlayers.map((p) => ({
+                id: p.id,
+                tournamentPlayerNo: p.tournamentPlayerNo,
+                name: p.globalPlayer.name,
+              }))}
             />
           )
         }

@@ -52,7 +52,19 @@ export async function startPairing(formData: FormData) {
   });
   const roundNumber = (lastRound?.roundNumber ?? 0) + 1;
 
-  const pairs = await generatePairing(tournamentId, roundNumber, pairingMethod as PairingMethod);
+  // Practice-mode only: staff can pick a subset of the active roster to play this round
+  // (spec §7 — not everyone has to play every round). A COMPETITION tournament's form never
+  // renders the checkbox list, so rawPlayerIds is always empty there.
+  const rawPlayerIds = formData.getAll("playerIds").map(String).filter(Boolean);
+  const participantIds =
+    tournament.mode === "PRACTICE" && rawPlayerIds.length > 0 ? new Set(rawPlayerIds) : undefined;
+
+  const pairs = await generatePairing(
+    tournamentId,
+    roundNumber,
+    pairingMethod as PairingMethod,
+    participantIds
+  );
   if (pairs.length === 0) {
     throw new Error("ไม่มีผู้เล่น Active ให้จับคู่");
   }
@@ -78,6 +90,7 @@ export async function startPairing(formData: FormData) {
 
     return {
       roundId: "", // filled in after round is created
+      tournamentId,
       tableId: table?.id ?? null,
       player1Id: pair.player1Id,
       player2Id: pair.player2Id,
