@@ -219,3 +219,64 @@ export async function forceDeleteGlobalPlayer(formData: FormData) {
     revalidatePath(publicTournamentPath(t));
   }
 }
+
+// Bulk version of deleteGlobalPlayer / forceDeleteGlobalPlayer for the checkbox selection on
+// Global Players. Same rule as the per-row force delete: every Match a selected player was in
+// is deleted outright (which also removes it from their opponents' history) — the confirm
+// dialog tells the admin how many of the selected players have tournament history first.
+export async function bulkDeleteGlobalPlayers(formData: FormData) {
+  const admin = await assertAdmin();
+  const ids = [
+    ...new Set(
+      formData
+        .getAll("globalPlayerIds")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0)
+    ),
+  ];
+  if (ids.length === 0) throw new Error("ยังไม่ได้เลือกผู้เล่น");
+
+  const players = await prisma.globalPlayer.findMany({
+    where: { id: { in: ids } },
+    include: { tournamentPlayers: { select: { id: true, tournamentId: true } } },
+  });
+  if (players.length === 0) throw new Error("ไม่พบผู้เล่นที่เลือก");
+
+  const tournamentPlayerIds = players.flatMap((p) => p.tournamentPlayers.map((tp) => tp.id));
+  const tournamentIds = [...new Set(players.flatMap((p) => p.tournamentPlayers.map((tp) => tp.tournamentId)))];
+  const playerIds = players.map((p) => p.id);
+
+  await prisma.$transaction([
+    prisma.match.deleteMany({
+      where: {
+        OR: [{ player1Id: { in: tournamentPlayerIds } }, { player2Id: { in: tournamentPlayerIds } }],
+      },
+    }),
+    prisma.tournamentPlayer.deleteMany({ where: { id: { in: tournamentPlayerIds } } }),
+    prisma.linkRequest.deleteMany({ where: { globalPlayerId: { in: playerIds } } }),
+    prisma.globalPlayer.deleteMany({ where: { id: { in: playerIds } } }),
+  ]);
+
+  const withHistory = players.filter((p) => p.tournamentPlayers.length > 0).length;
+  await logAdminAction({
+    actorId: admin.id,
+    action: "player.bulk_delete",
+    summary: `ลบผู้เล่น ${players.length} คน${
+      withHistory ? ` (${withHistory} คนมีประวัติการแข่งขัน — ลบแมตช์ไปด้วย)` : ""
+    }: ${players.map((p) => `"${p.name}" (${p.id})`).join(", ")}`,
+    targetType: "GlobalPlayer",
+  });
+
+  const tournamentModes = await prisma.tournament.findMany({
+    where: { id: { in: tournamentIds } },
+    select: { id: true, mode: true },
+  });
+  await setFlash(`ลบผู้เล่นแล้ว ${players.length} คน`);
+  revalidatePath("/admin/players");
+  for (const t of tournamentModes) {
+    revalidatePath(`/admin/tournaments/${t.id}`);
+    revalidatePath(`/admin/tournaments/${t.id}/rounds`);
+    revalidatePath(`/admin/tournaments/${t.id}/players`);
+    revalidatePath(publicTournamentPath(t));
+  }
+}
