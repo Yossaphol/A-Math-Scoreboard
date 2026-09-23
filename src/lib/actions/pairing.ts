@@ -248,7 +248,7 @@ export async function cancelPreview(formData: FormData) {
 // Lets Admin/Staff undo a round created by mistake — deliberately restricted to the LATEST
 // round only (any status: Preview/Confirmed/Completed), never a round in the middle, since
 // deleting one there would leave a gap in roundNumber and desync every later round's pairing
-// (Swiss avoid-rematch, standings) from what actually happened. Deleting cascades to that
+// (Swiss score groups, standings) from what actually happened. Deleting cascades to that
 // round's Matches/MatchSubmissions (schema onDelete: Cascade) — any scores already recorded
 // for it are gone for good, so this is one of the actions written to the Audit Log.
 export async function deleteRound(formData: FormData) {

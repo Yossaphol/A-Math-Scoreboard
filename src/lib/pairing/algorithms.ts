@@ -37,33 +37,31 @@ export function kingOfTheHillPairing(standings: Standing[]): PairResult[] {
   return pairSequential(rankOrder(standings).map((s) => s.id));
 }
 
-// Spec §9.3: group by standing, prefer nearest-ranked unplayed opponent, resolve
-// unavoidable rematches by falling back to the nearest available opponent.
+// Spec §9.3, as the organizer runs it: split the ranking into score groups (same points) and
+// fold each group — top half vs bottom half in order, so {1,2,3,4} plays 1-3, 2-4. A group
+// with an odd count pulls up the highest-ranked player of the next group (the best Diff among
+// the lower points). Rematches are deliberately NOT avoided — the pairing always follows the
+// fold, and staff can still swap players in Preview. Round 1 (everyone 0/0) folds by
+// tournamentPlayerNo, the last tie-break in rankOrder.
 export function swissPairing(standings: Standing[]): PairResult[] {
   const ranked = rankOrder(standings);
-
-  let pool = ranked;
-  let byePlayer: Standing | undefined;
-  if (pool.length % 2 === 1) {
-    // Give the bye to the lowest-ranked player who hasn't had one yet (spec §9.3 point 7).
-    for (let i = pool.length - 1; i >= 0; i--) {
-      if (!pool[i].hadBye) {
-        byePlayer = pool[i];
-        break;
-      }
-    }
-    byePlayer ??= pool[pool.length - 1];
-    pool = pool.filter((p) => p.id !== byePlayer!.id);
-  }
+  // Odd count: the lowest-ranked player always takes the Bye, before any grouping.
+  const byePlayer = ranked.length % 2 === 1 ? ranked.pop() : undefined;
 
   const results: PairResult[] = [];
-  const remaining = [...pool];
-  while (remaining.length > 0) {
-    const current = remaining.shift()!;
-    let opponentIndex = remaining.findIndex((p) => !current.opponents.has(p.id));
-    if (opponentIndex === -1) opponentIndex = 0; // unavoidable rematch — nearest by rank
-    const [opponent] = remaining.splice(opponentIndex, 1);
-    results.push({ player1Id: current.id, player2Id: opponent.id });
+  let start = 0;
+  while (start < ranked.length) {
+    let end = start;
+    while (end < ranked.length && ranked[end].points === ranked[start].points) end++;
+    // Can't overrun: every group before this one had an even count and ranked.length is even.
+    if ((end - start) % 2 === 1) end++;
+
+    const group = ranked.slice(start, end);
+    const half = group.length / 2;
+    for (let i = 0; i < half; i++) {
+      results.push({ player1Id: group[i].id, player2Id: group[i + half].id });
+    }
+    start = end;
   }
 
   if (byePlayer) results.push({ player1Id: byePlayer.id, player2Id: null });
