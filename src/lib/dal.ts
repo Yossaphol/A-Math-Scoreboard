@@ -6,6 +6,13 @@ import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma/enums";
 
 /**
+ * The single account allowed to manage who else holds the ADMIN role (add or remove).
+ * Regular Admins can still manage Staff — this only gates the Admins roster itself,
+ * so a compromised or careless Admin account can't mint or purge other Admins.
+ */
+export const SUPER_ADMIN_EMAIL = "yossaphol3502@gmail.com";
+
+/**
  * Memoized per-request session read. This is the ONLY place page/action code
  * should read auth from — never trust proxy.ts redirects as the real check
  * (spec §5: backend must enforce permissions, not just hide UI).
@@ -86,10 +93,19 @@ export async function assertTournamentAccess(tournamentId: string) {
   return session.user;
 }
 
-/** Server Action guard for Admin-only mutations (create tournament, manage staff/admins, global players). */
+/** Server Action guard for Admin-only mutations (create tournament, manage staff, global players). */
 export async function assertAdmin() {
   const session = await getSession();
   if (!session?.user) throw new Error("Unauthorized");
   if (session.user.role !== "ADMIN") throw new Error("Forbidden: admin only");
   return session.user;
+}
+
+/** Server Action guard for managing the Admins roster itself — reserved for SUPER_ADMIN_EMAIL. */
+export async function assertSuperAdmin() {
+  const user = await assertAdmin();
+  if (user.email !== SUPER_ADMIN_EMAIL) {
+    throw new Error("Forbidden: only the super admin can manage admins");
+  }
+  return user;
 }

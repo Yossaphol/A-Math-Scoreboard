@@ -3,16 +3,16 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { assertAdmin } from "@/lib/dal";
+import { assertSuperAdmin } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
 
 const addAdminSchema = z.object({ email: z.email("อีเมลไม่ถูกต้อง") });
 
-// Spec §5: only an Admin can add another Admin, matched by Gmail — the account is created
-// (or promoted, if it already existed as Staff/User) the moment it's added, no separate
-// acceptance step, matching how Google sign-in resolves role by email.
+// Only the super admin (SUPER_ADMIN_EMAIL) may add another Admin, matched by Gmail — the
+// account is created (or promoted, if it already existed as Staff/User) the moment it's
+// added, no separate acceptance step, matching how Google sign-in resolves role by email.
 export async function addAdmin(formData: FormData) {
-  await assertAdmin();
+  await assertSuperAdmin();
   const parsed = addAdminSchema.safeParse({ email: formData.get("email") });
   if (!parsed.success) throw new Error(parsed.error.issues.map((i) => i.message).join(", "));
 
@@ -27,7 +27,7 @@ export async function addAdmin(formData: FormData) {
 }
 
 export async function removeAdmin(formData: FormData) {
-  const admin = await assertAdmin();
+  const admin = await assertSuperAdmin();
   const userId = String(formData.get("userId"));
 
   if (userId === admin.id) {
