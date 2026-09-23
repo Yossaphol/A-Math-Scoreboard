@@ -48,15 +48,6 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
             {tournament.name} · Table {table.tableNumber}
           </p>
           <p className="mt-2 text-sm font-medium text-success">ผลการแข่งขันยืนยันแล้ว</p>
-          {match.forfeitPlayerId && (
-            <p className="mt-1 text-xs text-neutral-500">
-              Bye —{" "}
-              {match.forfeitPlayerId === match.player1Id
-                ? match.player1.globalPlayer.name
-                : match.player2!.globalPlayer.name}{" "}
-              ไม่มา
-            </p>
-          )}
           <div className="mt-6 flex items-center justify-center gap-6 text-sm">
             <PlayerResult
               name={match.player1.globalPlayer.name}
@@ -101,12 +92,12 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
           <p className="text-sm text-neutral-800">
             {claimantName} แจ้งว่า {match.byeClaimedById === match.player1Id ? player2Name : player1Name} ไม่มา
           </p>
-          <p className="mt-0.5 text-xs text-neutral-500">รอ Admin/Staff อนุมัติ Bye</p>
+          <p className="mt-0.5 text-xs text-neutral-500">รอ Admin/Staff ยืนยันและจัดคู่ใหม่</p>
           <form action={cancelLateByeClaim} className="mt-3">
             <input type="hidden" name="matchId" value={match.id} />
             <input type="hidden" name="qrToken" value={qrToken} />
             <SubmitButton size="sm" variant="secondary">
-              คู่แข่งมาแล้ว — ยกเลิกคำขอ
+              คู่แข่งมาแล้ว — ยกเลิกคำแจ้ง
             </SubmitButton>
           </form>
         </Card>
@@ -169,10 +160,10 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
                 <input type="hidden" name="qrToken" value={qrToken} />
                 <input type="hidden" name="side" value={chosenSide} />
                 <ConfirmSubmitButton
-                  label="คู่แข่งไม่มา? แจ้งขอ Bye"
+                  label="คู่แข่งไม่มา? แจ้ง Admin/Staff"
                   variant="ghost"
                   confirmTitle={`${chosenSide === "PLAYER1" ? player2Name : player1Name} ไม่มา?`}
-                  confirmMessage={`แจ้ง Admin/Staff ว่าคู่แข่งไม่มา ถ้าอนุมัติ คุณจะได้ Bye ชนะ ${BYE_SCORE}-0 — ถ้าคู่แข่งมาทันและส่งผลตรงกันทั้งสองฝั่ง คำขอนี้จะถูกยกเลิกเอง`}
+                  confirmMessage={`Admin/Staff จะยืนยันแล้วหาคู่แข่งใหม่ให้จากคนที่คู่ไม่มาเหมือนกัน ถ้าไม่มีใครเหลือ คุณจะได้ Bye ชนะ ${BYE_SCORE}-0 — ถ้าคู่แข่งมาทันและส่งผลตรงกันทั้งสองฝั่ง คำแจ้งนี้จะถูกยกเลิกเอง`}
                 />
               </form>
             )}

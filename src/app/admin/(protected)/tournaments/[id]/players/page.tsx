@@ -24,9 +24,9 @@ type HistoryEntry = {
   diff: number | null;
   rawDiff: number | null;
   result: MatchOutcome | null;
-  status: MatchStatus;
-  // Late-arrival Bye: which side didn't show up (null for a game actually played).
-  absent: "self" | "opponent" | null;
+  status: MatchStatus | null; // null for a no-show, which has no match
+  // This row is a no-show (RoundAbsence) forfeit, not a game.
+  absent: boolean;
   byeClaimPending: boolean;
 };
 
@@ -35,7 +35,7 @@ export default async function TournamentPlayersPage(
 ) {
   const { id } = await props.params;
 
-  const [tournament, players, matches] = await Promise.all([
+  const [tournament, players, matches, absences] = await Promise.all([
     prisma.tournament.findUniqueOrThrow({ where: { id } }),
     prisma.tournamentPlayer.findMany({
       where: { tournamentId: id },
@@ -51,6 +51,7 @@ export default async function TournamentPlayersPage(
         player2: { include: { globalPlayer: true } },
       },
     }),
+    prisma.roundAbsence.findMany({ where: { tournamentId: id }, include: { round: true } }),
   ]);
 
   // Each player's games in this Tournament, from both sides of the Match, ordered by Round.
@@ -83,7 +84,7 @@ export default async function TournamentPlayersPage(
         diff: done ? BYE_SCORE : null,
         rawDiff: done ? BYE_SCORE : null,
         result: done ? "WIN" : null,
-        absent: null,
+        absent: false,
       });
       continue;
     }
@@ -92,31 +93,44 @@ export default async function TournamentPlayersPage(
     const scored = m.finalPlayer1Score != null && m.finalPlayer2Score != null;
     const p1 = m.finalPlayer1Score ?? 0;
     const p2 = m.finalPlayer2Score ?? 0;
-    // A late-arrival Bye is stored as 100-0 and never capped — no game was actually played.
-    const diffFor = (own: number, opp: number) =>
-      m.forfeitPlayerId ? own - opp : cappedDiff(own, opp, cap.enabled, cap.max);
-    const absentFor = (playerId: string) =>
-      !m.forfeitPlayerId ? null : m.forfeitPlayerId === playerId ? "self" : "opponent";
 
     pushEntry(m.player1Id, {
       ...base,
       opponent: m.player2.globalPlayer.name,
       myScore: m.finalPlayer1Score,
       oppScore: m.finalPlayer2Score,
-      diff: scored ? diffFor(p1, p2) : null,
+      diff: scored ? cappedDiff(p1, p2, cap.enabled, cap.max) : null,
       rawDiff: scored ? p1 - p2 : null,
       result: m.player1Result,
-      absent: absentFor(m.player1Id),
+      absent: false,
     });
     pushEntry(m.player2Id, {
       ...base,
       opponent: m.player1.globalPlayer.name,
       myScore: m.finalPlayer2Score,
       oppScore: m.finalPlayer1Score,
-      diff: scored ? diffFor(p2, p1) : null,
+      diff: scored ? cappedDiff(p2, p1, cap.enabled, cap.max) : null,
       rawDiff: scored ? p2 - p1 : null,
       result: m.player2Result,
-      absent: absentFor(m.player2Id),
+      absent: false,
+    });
+  }
+  // No-shows (RoundAbsence): forfeit L 0-100 (-100), same as the Scoreboard.
+  for (const a of absences) {
+    pushEntry(a.tournamentPlayerId, {
+      matchId: `absence-${a.id}`,
+      roundNumber: a.round.roundNumber,
+      createdAt: a.createdAt,
+      tableNumber: null,
+      opponent: null,
+      myScore: 0,
+      oppScore: BYE_SCORE,
+      diff: -BYE_SCORE,
+      rawDiff: -BYE_SCORE,
+      result: "LOSS",
+      status: null,
+      absent: true,
+      byeClaimPending: false,
     });
   }
   for (const list of historyByPlayer.values()) {
@@ -238,7 +252,7 @@ function PlayerHistory({ history }: { history: HistoryEntry[] }) {
         <tbody>
           {history.map((h) => {
             const outcome = h.result ? MATCH_OUTCOME_BADGE[h.result] : null;
-            const matchStatus = MATCH_STATUS_BADGE[h.status];
+            const matchStatus = h.status ? MATCH_STATUS_BADGE[h.status] : null;
             const capped = h.diff != null && h.rawDiff != null && h.diff !== h.rawDiff;
             return (
               <tr key={h.matchId} className="border-b border-neutral-100 last:border-0">
@@ -250,9 +264,7 @@ function PlayerHistory({ history }: { history: HistoryEntry[] }) {
                   {outcome ? <Badge variant={outcome.variant}>{outcome.label}</Badge> : "—"}
                 </td>
                 <td className="py-2 pr-3">
-                  {h.opponent ?? "Bye"}
-                  {h.absent === "opponent" && <span className="ml-1.5 text-neutral-400">(ไม่มา)</span>}
-                  {h.absent === "self" && <span className="ml-1.5 text-neutral-400">· ผู้เล่นนี้ไม่มา</span>}
+                  {h.absent ? <span className="text-neutral-400">— ไม่ได้มาแข่ง</span> : (h.opponent ?? "Bye")}
                 </td>
                 <td className="py-2 pr-3 text-right tabular-nums">
                   {h.myScore != null && h.oppScore != null ? `${h.myScore} - ${h.oppScore}` : "—"}
@@ -276,12 +288,12 @@ function PlayerHistory({ history }: { history: HistoryEntry[] }) {
                 </td>
                 <td className="py-2 pr-4 text-right">
                   {h.absent ? (
-                    <Badge variant="info">Bye (มาสาย)</Badge>
+                    <Badge variant="danger">ไม่มา</Badge>
                   ) : h.byeClaimPending ? (
-                    <Badge variant="warning">รออนุมัติ Bye</Badge>
-                  ) : (
+                    <Badge variant="warning">มีคนแจ้งว่าไม่มา</Badge>
+                  ) : matchStatus ? (
                     <Badge variant={matchStatus.variant}>{matchStatus.label}</Badge>
-                  )}
+                  ) : null}
                 </td>
               </tr>
             );

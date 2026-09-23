@@ -58,6 +58,10 @@ export default async function AccountPage(props: PageProps<"/account">) {
             where: { status: { in: ["CONFIRMED", "BYE"] } },
             include: { player1: { include: { globalPlayer: true } }, round: true },
           },
+          absences: {
+            where: { round: { status: { in: ["CONFIRMED", "COMPLETED"] } } },
+            include: { round: true },
+          },
         },
         orderBy: { createdAt: "desc" },
       })
@@ -169,6 +173,7 @@ export default async function AccountPage(props: PageProps<"/account">) {
                     oppScore: m.finalPlayer2Score,
                     result: m.player1Result,
                     isBye: m.isBye,
+                    absent: false,
                   })),
                   ...tp.matchesAsPlayer2.map((m) => ({
                     roundNumber: m.round?.roundNumber ?? null,
@@ -178,6 +183,18 @@ export default async function AccountPage(props: PageProps<"/account">) {
                     oppScore: m.finalPlayer1Score,
                     result: m.player2Result,
                     isBye: false,
+                    absent: false,
+                  })),
+                  // No-show: forfeit L 0-100.
+                  ...tp.absences.map((a) => ({
+                    roundNumber: a.round.roundNumber,
+                    createdAt: a.createdAt,
+                    opponent: "",
+                    myScore: 0,
+                    oppScore: BYE_SCORE,
+                    result: "LOSS" as const,
+                    isBye: false,
+                    absent: true,
                   })),
                 ].sort((a, b) => {
                   if (a.roundNumber != null && b.roundNumber != null) return a.roundNumber - b.roundNumber;
@@ -209,7 +226,7 @@ export default async function AccountPage(props: PageProps<"/account">) {
                           <span className="text-neutral-500">
                             {m.roundNumber != null ? `R${m.roundNumber}` : "ฝึกซ้อม"}
                           </span>
-                          <span>{m.isBye ? "Bye" : `vs ${m.opponent}`}</span>
+                          <span>{m.absent ? "ไม่ได้มาแข่ง" : m.isBye ? "Bye" : `vs ${m.opponent}`}</span>
                           <span className="font-medium">
                             {/* Spec §19: a Bye counts as a win worth 100-0. */}
                             {m.isBye ? `${BYE_SCORE} - 0` : `${m.myScore} - ${m.oppScore}`}{" "}

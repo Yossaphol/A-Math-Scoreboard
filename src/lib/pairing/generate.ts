@@ -13,12 +13,14 @@ export async function generatePairing(
   tournamentId: string,
   roundNumber: number,
   method: PairingMethod,
-  // Practice-mode only: restrict the pairing pool to a chosen subset of the active roster
-  // (spec: not everyone has to play every round). undefined means "everyone", reproducing
-  // today's behavior exactly — always the case for COMPETITION.
-  participantIds?: Set<string>
+  // Restrict the pairing pool to a subset of the active roster: Practice mode's "who plays
+  // this round", and re-pairing the players left without an opponent after a no-show.
+  // undefined means "everyone" — how every new COMPETITION round is generated.
+  participantIds?: Set<string>,
+  // Re-pairing a Round already under way: rank on the standings from before that Round.
+  options: { excludeRoundId?: string } = {}
 ): Promise<PairResult[]> {
-  const standings = await getStandingsForPairing(tournamentId);
+  const standings = await getStandingsForPairing(tournamentId, options);
   const pool = participantIds ? standings.filter((s) => participantIds.has(s.id)) : standings;
 
   switch (method) {

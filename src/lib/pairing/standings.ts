@@ -8,8 +8,15 @@ import type { Standing } from "./types";
 /**
  * Standings used as pairing input — spec §9.5: must come from CONFIRMED matches only,
  * and Withdrawn players (spec §9.1/§19) are excluded from the pool entirely.
+ *
+ * `excludeRoundId` leaves one Round's results out — used when re-pairing a Round that's
+ * already under way (repairRoundForAbsences), so it's paired on the standings from before
+ * that Round, exactly like it was originally generated.
  */
-export async function getStandingsForPairing(tournamentId: string): Promise<Standing[]> {
+export async function getStandingsForPairing(
+  tournamentId: string,
+  options: { excludeRoundId?: string } = {}
+): Promise<Standing[]> {
   const players = await prisma.tournamentPlayer.findMany({
     where: { tournamentId, status: "ACTIVE" },
     orderBy: { tournamentPlayerNo: "asc" },
@@ -30,8 +37,11 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
   // Queried directly by tournamentId (not through round: { tournamentId }) so self-service
   // ad-hoc matches (roundId null, spec: Practice self-service needs no staff Round) are
   // included too — Scoreboard and pairing Standings must stay in lockstep on this.
+  const excludeRound = options.excludeRoundId
+    ? { OR: [{ roundId: null }, { roundId: { not: options.excludeRoundId } }] }
+    : {};
   const matches = await prisma.match.findMany({
-    where: { tournamentId, status: { in: ["CONFIRMED", "BYE"] } },
+    where: { tournamentId, status: { in: ["CONFIRMED", "BYE"] }, ...excludeRound },
     include: { round: true },
   });
 
@@ -49,12 +59,8 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
       continue;
     }
 
-    // A late-arrival Bye (forfeitPlayerId) means these two never actually played, so they
-    // stay eligible to be paired later. It also isn't a system Bye, so hadBye stays false.
-    if (!m.forfeitPlayerId) {
-      if (p1) p1.opponents.add(m.player2Id);
-      if (p2) p2.opponents.add(m.player1Id);
-    }
+    if (p1) p1.opponents.add(m.player2Id);
+    if (p2) p2.opponents.add(m.player1Id);
 
     if (
       m.finalPlayer1Score == null ||
@@ -66,9 +72,7 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
     }
 
     const cfg = getMaxScoreConfig(m);
-    const diff = m.forfeitPlayerId
-      ? m.finalPlayer1Score - m.finalPlayer2Score
-      : cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, cfg.enabled, cfg.max);
+    const diff = cappedDiff(m.finalPlayer1Score, m.finalPlayer2Score, cfg.enabled, cfg.max);
 
     if (p1) {
       p1.diff += diff;
@@ -78,6 +82,19 @@ export async function getStandingsForPairing(tournamentId: string): Promise<Stan
       p2.diff += -diff;
       p2.points += m.player2Result === "WIN" ? 2 : m.player2Result === "TIE" ? 1 : 0;
     }
+  }
+
+  // No-shows (RoundAbsence): L 0-100 — no points, Diff -100. Same rule as the Scoreboard.
+  const absences = await prisma.roundAbsence.findMany({
+    where: {
+      tournamentId,
+      round: { status: { in: ["CONFIRMED", "COMPLETED"] } },
+      ...(options.excludeRoundId ? { roundId: { not: options.excludeRoundId } } : {}),
+    },
+  });
+  for (const a of absences) {
+    const s = map.get(a.tournamentPlayerId);
+    if (s) s.diff -= BYE_SCORE;
   }
 
   return Array.from(map.values());

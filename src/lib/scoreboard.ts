@@ -100,11 +100,19 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
     const p1Raw = m.finalPlayer1Score;
     const p2Raw = m.finalPlayer2Score;
     const cfg = getMaxScoreConfig(m);
-    // A late-arrival Bye is stored as 100-0 and is never capped — no game was played.
-    const diff = m.forfeitPlayerId ? p1Raw - p2Raw : cappedDiff(p1Raw, p2Raw, cfg.enabled, cfg.max);
+    const diff = cappedDiff(p1Raw, p2Raw, cfg.enabled, cfg.max);
 
     apply(m.player1Id, m.player1Result, p1Raw, p2Raw, diff);
     apply(m.player2Id, m.player2Result, p2Raw, p1Raw, -diff);
+  }
+
+  // No-shows (RoundAbsence) forfeit: L 0-100, Diff -100 — counted once their Round is
+  // confirmed, same as that Round's matches.
+  const absences = await prisma.roundAbsence.findMany({
+    where: { tournamentId, round: { status: { in: ["CONFIRMED", "COMPLETED"] } } },
+  });
+  for (const a of absences) {
+    apply(a.tournamentPlayerId, "LOSS", 0, BYE_SCORE, -BYE_SCORE);
   }
 
   const sorted = Array.from(rows.values()).sort(

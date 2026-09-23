@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { cappedDiff } from "@/lib/match/diff";
+import { BYE_SCORE } from "@/lib/match/bye";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { MATCH_STATUS_BADGE, MATCH_OUTCOME_BADGE } from "@/lib/status-labels";
@@ -16,6 +17,7 @@ export async function RoundDetail({ tournamentId, roundId }: { tournamentId: str
           player2: { include: { globalPlayer: true } },
         },
       },
+      absences: { include: { tournamentPlayer: { include: { globalPlayer: true } } } },
     },
   });
   if (!round || round.tournamentId !== tournamentId || !["CONFIRMED", "COMPLETED"].includes(round.status)) {
@@ -53,20 +55,10 @@ export async function RoundDetail({ tournamentId, roundId }: { tournamentId: str
 
           const confirmed = m.status === "CONFIRMED" && m.finalPlayer1Score != null && m.finalPlayer2Score != null;
           const rawDiff = confirmed ? m.finalPlayer1Score! - m.finalPlayer2Score! : 0;
-          // A late-arrival Bye (forfeitPlayerId) is stored as 100-0 and never capped.
-          const diff = !confirmed
-            ? null
-            : m.forfeitPlayerId
-              ? rawDiff
-              : cappedDiff(m.finalPlayer1Score!, m.finalPlayer2Score!, round.maximumScoreEnabled, round.maximumScore);
+          const diff = confirmed
+            ? cappedDiff(m.finalPlayer1Score!, m.finalPlayer2Score!, round.maximumScoreEnabled, round.maximumScore)
+            : null;
           const wasCapped = diff != null && diff !== rawDiff;
-          const absentName = !confirmed
-            ? null
-            : m.forfeitPlayerId === m.player1Id
-              ? m.player1.globalPlayer.name
-              : m.forfeitPlayerId === m.player2Id
-                ? m.player2.globalPlayer.name
-                : null;
 
           return (
             <li key={m.id}>
@@ -89,15 +81,7 @@ export async function RoundDetail({ tournamentId, roundId }: { tournamentId: str
                   />
                 </div>
 
-                {confirmed && absentName ? (
-                  <p className="mt-3 border-t border-neutral-100 pt-2.5 text-center text-xs text-neutral-500">
-                    <Badge variant="info" className="mr-1.5">
-                      Bye
-                    </Badge>
-                    {absentName} ไม่มา · ผลต่าง{" "}
-                    <span className="font-medium text-neutral-900">±{Math.abs(rawDiff)}</span>
-                  </p>
-                ) : confirmed ? (
+                {confirmed ? (
                   <p className="mt-3 border-t border-neutral-100 pt-2.5 text-center text-xs text-neutral-500">
                     ผลต่าง{" "}
                     <span className="font-medium text-neutral-900">
@@ -120,6 +104,23 @@ export async function RoundDetail({ tournamentId, roundId }: { tournamentId: str
           );
         })}
       </ul>
+
+      {round.absences.length > 0 && (
+        <Card padding="p-4" className="mt-3">
+          <p className="text-xs font-medium text-neutral-500">ไม่มาแข่ง — แพ้ 0-{BYE_SCORE} (-{BYE_SCORE})</p>
+          <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {round.absences
+              .map((a) => a.tournamentPlayer)
+              .sort((a, b) => a.tournamentPlayerNo - b.tournamentPlayerNo)
+              .map((p) => (
+                <li key={p.id}>
+                  {p.globalPlayer.name}
+                  <span className="ml-1.5 text-xs text-neutral-400">(#{p.tournamentPlayerNo})</span>
+                </li>
+              ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }

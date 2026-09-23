@@ -162,6 +162,7 @@ model Tournament {
   rounds  Round[]
   tables  TournamentTable[]
   matches Match[]
+  absences RoundAbsence[]
 
   @@index([status])
 }
@@ -193,6 +194,7 @@ model TournamentPlayer {
 
   matchesAsPlayer1 Match[] @relation("MatchPlayer1")
   matchesAsPlayer2 Match[] @relation("MatchPlayer2")
+  absences         RoundAbsence[]
 
   // W/T/L, cumulative score/diff and First/Second totals are ALWAYS derived from confirmed
   // Matches (spec §9.5) — intentionally not cached here to avoid a second source of truth.
@@ -218,9 +220,30 @@ model Round {
   createdAt   DateTime    @default(now())
   confirmedAt DateTime?
 
-  matches Match[]
+  matches  Match[]
+  absences RoundAbsence[]
 
   @@unique([tournamentId, roundNumber])
+}
+
+// A player who was due to play this Round but never showed up. They're taken out of the
+// Round's matches (the players left without an opponent are re-paired among themselves — see
+// repairRoundForAbsences) and instead get a forfeit: L 0-100 (Diff -100), counted like any
+// other result once the Round is CONFIRMED. Removing the row (they arrived after all) puts
+// them back into the pairing pool.
+model RoundAbsence {
+  id                 String           @id @default(cuid())
+  roundId            String
+  round              Round            @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  // Denormalized (like Match.tournamentId) so Scoreboard/Standings can query by tournament.
+  tournamentId       String
+  tournament         Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentPlayerId String
+  tournamentPlayer   TournamentPlayer @relation(fields: [tournamentPlayerId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now())
+
+  @@unique([roundId, tournamentPlayerId])
+  @@index([tournamentId])
 }
 
 // A physical table with a durable QR code, reused across the whole tournament (spec §12).
@@ -284,15 +307,9 @@ model Match {
 
   status MatchStatus @default(PENDING)
 
-  // Late-arrival Bye — distinct from the odd-player-count Bye above (isBye, no opponent at
-  // all). Both players were paired, but this one never showed up: the match is CONFIRMED with
-  // the present player winning 100-0 (+100) and this one losing 0-100 (-100), never capped by
-  // Maximum Score. Null for every game that was actually played. See src/lib/match/bye.ts.
-  forfeitPlayerId String?
-
   // A player at the table reported "my opponent didn't show up". The table QR page has no
-  // login, so a claim alone is never trusted — it waits for Admin/Staff approval, which sets
-  // forfeitPlayerId. Cleared once the match gets a result by any route.
+  // login, so a claim alone is never trusted — Admin/Staff approve it by marking the opponent
+  // absent (RoundAbsence), which re-pairs the round. Cleared once the match gets a real result.
   byeClaimedById String?
   byeClaimedAt   DateTime?
 
