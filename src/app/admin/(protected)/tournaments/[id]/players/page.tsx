@@ -117,11 +117,32 @@ export default async function TournamentPlayersPage(
 
       <Card className="mt-6">
         <h2 className="text-sm font-medium text-neutral-900">นำเข้าผู้เล่นจากไฟล์</h2>
-        <p className="mt-1 text-xs text-neutral-500">
-          รองรับ .csv, .xlsx, .json — คอลัมน์ที่รองรับ: <code>name</code>, <code>nickname</code> (ไม่บังคับ),{" "}
-          <code>globalPlayerId</code> (ไม่บังคับ — ถ้าใส่จะใช้ผู้เล่นที่มีอยู่แล้วตาม ID นั้นทันที) ผู้เล่นที่ชื่อตรงกับ
-          ที่มีอยู่แล้วในระบบจะถูกใช้ซ้ำ ไม่สร้างใหม่ซ้ำซ้อน
-        </p>
+        <div className="mt-1 space-y-1.5 text-xs text-neutral-500">
+          <p>รองรับไฟล์ .csv, .xlsx/.xls หรือ .json เท่านั้น</p>
+          <p>
+            ชื่อคอลัมน์ที่ระบบรู้จัก (พิมพ์เล็ก/ใหญ่ไม่มีผล):
+          </p>
+          <ul className="list-disc space-y-0.5 pl-4">
+            <li>
+              <code>name</code> หรือ <code>ชื่อ</code> — <strong>ต้องมี</strong> (ถ้าไม่ใส่ Global Player ID)
+            </li>
+            <li>
+              <code>nickname</code> หรือ <code>ชื่อเล่น</code> — ไม่บังคับ
+            </li>
+            <li>
+              <code>globalPlayerId</code> / <code>id</code> / <code>รหัส</code> — <strong>ไม่บังคับ</strong>,
+              ไม่ต้องรู้หรือใส่ก็ได้
+            </li>
+          </ul>
+          <p>
+            <strong>ไม่ต้องใส่ Global Player ID ก็นำเข้าได้ปกติ</strong> — ใส่แค่ชื่อพอ ระบบจะค้นหาผู้เล่นที่ชื่อ
+            ตรงกันทุกตัวอักษร (ไม่สนตัวพิมพ์เล็ก/ใหญ่) ในระบบก่อน ถ้าเจอจะใช้คนเดิม ไม่สร้างซ้ำ ถ้าไม่เจอ ระบบจะสร้าง
+            ผู้เล่นใหม่และ<strong>สุ่ม Global Player ID ให้เองอัตโนมัติ</strong> ใส่คอลัมน์นี้เฉพาะกรณีต้องการยืนยันว่า
+            เป็นผู้เล่นคนเดิมแน่ๆ ตาม ID ที่รู้อยู่แล้ว (เช่น ชื่อสะกดไม่ตรงกับที่เคยบันทึกไว้) — ถ้าใส่ ID ที่ไม่มีอยู่จริง
+            แถวนั้นจะถูกข้ามพร้อมแจ้ง error เป็นรายแถว ไม่สร้างผู้เล่นใหม่ให้
+          </p>
+          <p>ผู้เล่นที่อยู่ในทัวร์นาเมนต์นี้อยู่แล้วจะถูกข้าม ไม่เพิ่มซ้ำ</p>
+        </div>
         <form action={importPlayersToTournament} className="mt-3 flex flex-wrap items-end gap-3">
           <input type="hidden" name="tournamentId" value={id} />
           <input
