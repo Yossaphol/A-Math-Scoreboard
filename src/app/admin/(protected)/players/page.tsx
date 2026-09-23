@@ -85,12 +85,14 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                 <tr key={p.id} className="border-b border-neutral-100 last:border-0">
                   <td className="py-3 pl-5 pr-3 text-xs text-neutral-400">{p.id}</td>
                   <td className="py-3 pr-3">
-                    <RenamePlayerForm globalPlayerId={p.id} name={p.name} nickname={p.nickname} />
+                    {p.name}
+                    {p.nickname && <span className="ml-2 text-xs text-neutral-500">{p.nickname}</span>}
                   </td>
                   <td className="py-3 pr-3 text-xs text-neutral-500">{p.user?.email ?? "—"}</td>
                   <td className="py-3 pr-3 text-right">{p._count.tournamentPlayers}</td>
                   <td className="py-3 pr-5 text-center">
                     <ActionMenu>
+                      <RenamePlayerForm globalPlayerId={p.id} name={p.name} nickname={p.nickname} />
                       {p.user && (
                         <>
                           <form action={unlinkGlobalPlayerAccount}>
