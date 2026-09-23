@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { ActionMenu } from "@/components/ui/ActionMenu";
 import { RenamePlayerForm } from "@/components/admin/RenamePlayerForm";
 import { AddGlobalPlayerModal } from "@/components/admin/AddGlobalPlayerModal";
 import { PageSizeSelect } from "@/components/ui/PageSizeSelect";
@@ -76,7 +77,7 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                 <th className="py-3 pr-3">Name</th>
                 <th className="py-3 pr-3">Linked Google Account</th>
                 <th className="py-3 pr-3 text-right">Tournaments</th>
-                <th className="py-3 pr-5"></th>
+                <th className="py-3 pr-5 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -88,8 +89,8 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                   </td>
                   <td className="py-3 pr-3 text-xs text-neutral-500">{p.user?.email ?? "—"}</td>
                   <td className="py-3 pr-3 text-right">{p._count.tournamentPlayers}</td>
-                  <td className="py-3 pr-5">
-                    <div className="flex justify-end gap-2">
+                  <td className="py-3 pr-5 text-center">
+                    <ActionMenu>
                       {p.user && (
                         <>
                           <form action={unlinkGlobalPlayerAccount}>
@@ -99,6 +100,7 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                               confirmTitle="ยกเลิกการผูกบัญชี Google?"
                               confirmMessage={`${p.user.email} จะไม่ผูกกับผู้เล่น "${p.name}" อีกต่อไป (บัญชียังใช้ Login ได้ตามปกติ)`}
                               variant="secondary"
+                              className="w-full"
                             />
                           </form>
                           <form action={deleteGlobalPlayerAccount}>
@@ -107,6 +109,7 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                               label="ลบบัญชี"
                               confirmTitle="ลบบัญชีผู้เล่นนี้?"
                               confirmMessage={`บัญชี ${p.user.email} จะถูกลบถาวร (ต้อง Login ใหม่หากจะใช้งานอีก) ทำได้เฉพาะบัญชีที่ยังไม่เคยเป็น Staff หรือสร้าง Tournament`}
+                              className="w-full"
                             />
                           </form>
                         </>
@@ -118,6 +121,7 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                             label="ลบผู้เล่น"
                             confirmTitle={`ลบผู้เล่น "${p.name}" พร้อมประวัติการแข่งขันทั้งหมด?`}
                             confirmMessage={`ผู้เล่นนี้เคยลงแข่ง ${p._count.tournamentPlayers} Tournament — การลบจะลบทุก Match ที่เขาเคยเล่นไปด้วย ซึ่งจะลบแมตช์นั้นออกจากประวัติของคู่แข่งที่เคยเจอเขาด้วยเช่นกัน (แก้คืนไม่ได้)`}
+                            className="w-full"
                           />
                         </form>
                       ) : (
@@ -127,10 +131,11 @@ export default async function GlobalPlayersPage(props: PageProps<"/admin/players
                             label="ลบผู้เล่น"
                             confirmTitle="ลบผู้เล่นนี้ออกจากระบบ?"
                             confirmMessage={`ผู้เล่น "${p.name}" (Global Player ID ${p.id}) จะถูกลบถาวร`}
+                            className="w-full"
                           />
                         </form>
                       )}
-                    </div>
+                    </ActionMenu>
                   </td>
                 </tr>
               ))}
