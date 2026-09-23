@@ -1,6 +1,6 @@
 import { RoundDetail } from "@/components/tournament-public/RoundDetail";
 
-export default async function PublicRoundDetailPage(props: PageProps<"/t/[id]/rounds/[roundId]">) {
+export default async function PracticeRoundDetailPage(props: PageProps<"/practice/[id]/rounds/[roundId]">) {
   const { id, roundId } = await props.params;
   return <RoundDetail tournamentId={id} roundId={roundId} />;
 }

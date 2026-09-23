@@ -11,7 +11,7 @@ export default async function PracticeLinkPage(props: PageProps<"/admin/tourname
 
   const token = await ensureSelfServiceToken(id);
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const url = `${baseUrl}/practice/${token}`;
+  const url = `${baseUrl}/practice/play/${token}`;
 
   return (
     <div>

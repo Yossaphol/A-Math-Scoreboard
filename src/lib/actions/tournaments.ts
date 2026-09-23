@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { assertAdmin, assertTournamentAccess } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
 import { practiceUnlockCookieName } from "@/lib/practice-lock";
+import { publicTournamentPath, publicTournamentListPath } from "@/lib/tournament-path";
 
 const createTournamentSchema = z.object({
   name: z.string().trim().min(2, "ชื่อ Tournament ต้องมีอย่างน้อย 2 ตัวอักษร"),
@@ -101,14 +102,14 @@ export async function updateTournamentStatus(formData: FormData) {
   const { tournamentId, status } = parsed.data;
   await assertTournamentAccess(tournamentId);
 
-  await prisma.tournament.update({ where: { id: tournamentId }, data: { status } });
+  const tournament = await prisma.tournament.update({ where: { id: tournamentId }, data: { status } });
 
   await setFlash("อัปเดตสถานะ Tournament แล้ว");
   revalidatePath(`/admin/tournaments/${tournamentId}`);
   revalidatePath(`/admin/tournaments/${tournamentId}/settings`);
   revalidatePath("/admin/tournaments");
-  revalidatePath(`/t/${tournamentId}`);
-  revalidatePath("/");
+  revalidatePath(publicTournamentPath(tournament));
+  revalidatePath(publicTournamentListPath(tournament.mode));
 }
 
 const deleteTournamentSchema = z.object({
@@ -133,7 +134,7 @@ export async function deleteTournament(formData: FormData) {
 
   await setFlash(`ลบ Tournament "${tournament.name}" แล้ว`);
   revalidatePath("/admin/tournaments");
-  revalidatePath("/");
+  revalidatePath(publicTournamentListPath(tournament.mode));
   redirect("/admin/tournaments");
 }
 
@@ -158,7 +159,7 @@ export async function unlockPracticeTournament(formData: FormData) {
 
   if (!tournament.pinCode || pin !== tournament.pinCode) {
     await setFlash("รหัสผ่านไม่ถูกต้อง", "error");
-    redirect(`/t/${tournamentId}`);
+    redirect(`/practice/${tournamentId}`);
   }
 
   const store = await cookies();
@@ -169,8 +170,8 @@ export async function unlockPracticeTournament(formData: FormData) {
     sameSite: "lax",
   });
 
-  revalidatePath(`/t/${tournamentId}`);
-  redirect(`/t/${tournamentId}`);
+  revalidatePath(`/practice/${tournamentId}`);
+  redirect(`/practice/${tournamentId}`);
 }
 
 // Lazily backfills a selfServiceToken for a Practice tournament created before this feature

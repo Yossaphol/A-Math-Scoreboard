@@ -1,9 +1,9 @@
 import { PublicTournamentShell } from "@/components/tournament-public/PublicTournamentShell";
 
-export default async function TournamentLayout(props: LayoutProps<"/t/[id]">) {
+export default async function PracticeTournamentLayout(props: LayoutProps<"/practice/[id]">) {
   const { id } = await props.params;
   return (
-    <PublicTournamentShell id={id} expectedMode="COMPETITION">
+    <PublicTournamentShell id={id} expectedMode="PRACTICE">
       {props.children}
     </PublicTournamentShell>
   );

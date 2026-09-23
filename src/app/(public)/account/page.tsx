@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { EditOwnNameForm } from "@/components/account/EditOwnNameForm";
 import { inputClass } from "@/components/ui/styles";
+import { publicTournamentPath } from "@/lib/tournament-path";
 
 const REQUEST_STATUS_LABEL: Record<string, { label: string; variant: "warning" | "success" | "danger" }> = {
   PENDING: { label: "รอตรวจสอบ", variant: "warning" },
@@ -188,7 +189,7 @@ export default async function AccountPage(props: PageProps<"/account">) {
                   <Card key={tp.id}>
                     <div className="flex items-center justify-between gap-2">
                       <Link
-                        href={`/t/${tp.tournamentId}`}
+                        href={publicTournamentPath({ id: tp.tournamentId, mode: tp.tournament.mode })}
                         className="min-w-0 truncate font-medium hover:underline"
                       >
                         {tp.tournament.name}

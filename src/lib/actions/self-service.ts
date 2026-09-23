@@ -71,7 +71,7 @@ export async function startSelfServiceMatch(formData: FormData) {
   await resolveMatchSubmission(match.id, "PLAYER1", player1Score, player2Score);
 
   await setFlash("ส่งผลแล้ว รอคู่แข่งกรอกผลเพื่อยืนยัน");
-  revalidatePath(`/practice/${token}`);
+  revalidatePath(`/practice/play/${token}`);
 }
 
 const submitSchema = z.object({
@@ -110,5 +110,5 @@ export async function submitSelfServiceResult(formData: FormData) {
     await setFlash("ผลไม่ตรงกับอีกฝ่าย กรุณาตรวจสอบและส่งผลอีกครั้งทั้งสองฝั่ง", "error");
   }
 
-  revalidatePath(`/practice/${token}`);
+  revalidatePath(`/practice/play/${token}`);
 }

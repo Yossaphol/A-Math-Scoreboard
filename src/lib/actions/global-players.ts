@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { assertAdmin } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
 import { generateGlobalPlayerId } from "@/lib/global-player-id";
+import { publicTournamentPath } from "@/lib/tournament-path";
 
 const createSchema = z.object({
   name: z.string().trim().min(1, "กรุณากรอกชื่อ"),
@@ -169,12 +170,17 @@ export async function forceDeleteGlobalPlayer(formData: FormData) {
     prisma.globalPlayer.delete({ where: { id: player.id } }),
   ]);
 
+  const tournamentModes = await prisma.tournament.findMany({
+    where: { id: { in: tournamentIds } },
+    select: { id: true, mode: true },
+  });
+
   await setFlash("ลบผู้เล่นแล้ว (รวมประวัติการแข่งขันทั้งหมด)");
   revalidatePath("/admin/players");
-  for (const tid of tournamentIds) {
-    revalidatePath(`/admin/tournaments/${tid}`);
-    revalidatePath(`/admin/tournaments/${tid}/rounds`);
-    revalidatePath(`/admin/tournaments/${tid}/players`);
-    revalidatePath(`/t/${tid}`);
+  for (const t of tournamentModes) {
+    revalidatePath(`/admin/tournaments/${t.id}`);
+    revalidatePath(`/admin/tournaments/${t.id}/rounds`);
+    revalidatePath(`/admin/tournaments/${t.id}/players`);
+    revalidatePath(publicTournamentPath(t));
   }
 }

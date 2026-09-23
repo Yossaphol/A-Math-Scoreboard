@@ -8,6 +8,7 @@ import { computeResult } from "@/lib/match/result";
 import { resolveMatchSubmission } from "@/lib/match/submit";
 import { maybeCompleteRound } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
+import { publicTournamentPath } from "@/lib/tournament-path";
 
 const submitSchema = z.object({
   matchId: z.string().min(1),
@@ -74,7 +75,10 @@ export async function adminSetMatchResult(formData: FormData) {
   }
   const { matchId, player1Score, player2Score } = parsed.data;
 
-  const match = await prisma.match.findUniqueOrThrow({ where: { id: matchId } });
+  const match = await prisma.match.findUniqueOrThrow({
+    where: { id: matchId },
+    include: { tournament: { select: { mode: true } } },
+  });
   const admin = await assertTournamentAccess(match.tournamentId);
   if (match.isBye) {
     throw new Error("Match นี้เป็น Bye ไม่ต้องกรอกคะแนน");
@@ -99,5 +103,5 @@ export async function adminSetMatchResult(formData: FormData) {
 
   await setFlash("บันทึกผลแล้ว");
   revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);
-  revalidatePath(`/t/${match.tournamentId}`);
+  revalidatePath(publicTournamentPath({ id: match.tournamentId, mode: match.tournament.mode }));
 }

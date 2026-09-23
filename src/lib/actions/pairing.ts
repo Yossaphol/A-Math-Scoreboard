@@ -8,6 +8,7 @@ import { generatePairing } from "@/lib/pairing/generate";
 import { getFirstSecondTotals, assignFirstSecond } from "@/lib/pairing/first-second";
 import { maybeCompleteRound } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
+import { publicTournamentPath } from "@/lib/tournament-path";
 import type { PairingMethod } from "@/generated/prisma/enums";
 
 const startPairingSchema = z.object({
@@ -182,7 +183,10 @@ export async function swapPreviewPlayers(formData: FormData) {
 
 export async function confirmPairing(formData: FormData) {
   const roundId = String(formData.get("roundId"));
-  const round = await prisma.round.findUniqueOrThrow({ where: { id: roundId } });
+  const round = await prisma.round.findUniqueOrThrow({
+    where: { id: roundId },
+    include: { tournament: { select: { mode: true } } },
+  });
   await assertTournamentAccess(round.tournamentId);
   if (round.status !== "PREVIEW") {
     throw new Error("Round นี้ไม่ได้อยู่ในสถานะ Preview");
@@ -205,7 +209,7 @@ export async function confirmPairing(formData: FormData) {
   await setFlash(`Confirm Round ${round.roundNumber} แล้ว`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
-  revalidatePath(`/t/${round.tournamentId}`);
+  revalidatePath(publicTournamentPath({ id: round.tournamentId, mode: round.tournament.mode }));
 }
 
 export async function cancelPreview(formData: FormData) {

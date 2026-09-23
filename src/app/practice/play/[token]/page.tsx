@@ -8,8 +8,10 @@ import { Card } from "@/components/ui/Card";
 // Practice-only self-service scoring: public, no auth, no staff-created Round required at
 // all (spec: players can log a game any time). "Who am I" is a URL search param, not a
 // session — same no-auth-at-the-table model as /table/[qrToken], just without a physical
-// table to detect the match from, since there's no pre-made pairing here.
-export default async function PracticeSelfServicePage(props: PageProps<"/practice/[token]">) {
+// table to detect the match from, since there's no pre-made pairing here. Lives at
+// /practice/play/[token] (not /practice/[token]) so it doesn't collide with the
+// /practice/[id] tournament-detail route.
+export default async function PracticeSelfServicePage(props: PageProps<"/practice/play/[token]">) {
   const { token } = await props.params;
   const { me } = await props.searchParams;
 
@@ -46,7 +48,7 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
             {activePlayers.map((p) => (
               <Link
                 key={p.id}
-                href={`/practice/${token}?me=${p.id}`}
+                href={`/practice/play/${token}?me=${p.id}`}
                 className="block rounded-lg border border-neutral-200 px-4 py-3 text-sm hover:border-accent"
               >
                 {p.globalPlayer.name}{" "}
@@ -88,7 +90,7 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
         สวัสดี {selfPlayer.globalPlayer.name}
       </h1>
       <p className="text-center text-[11px] text-neutral-400">
-        <Link href={`/practice/${token}`} className="hover:underline">
+        <Link href={`/practice/play/${token}`} className="hover:underline">
           ไม่ใช่คุณ? เลือกใหม่
         </Link>
       </p>
