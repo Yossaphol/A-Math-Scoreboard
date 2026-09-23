@@ -76,6 +76,10 @@ ongoing/confirmed = green, completed = gray, ADMIN = red, STAFF = blue (`info` v
 - **Database**: Prisma Postgres, region `ap-southeast-1`, connected via the pooled
   `pooled.db.prisma.io` connection string. `DATABASE_URL` on Vercel points here;
   `.env.production.local` (gitignored) has the same value for one-off scripts.
+- **Migrations use the direct connection**: `DIRECT_DATABASE_URL` on Vercel is the same
+  credentials on the direct host `db.prisma.io:5432`. `prisma7.config.ts` prefers it over
+  `DATABASE_URL` for CLI commands, because `prisma migrate deploy` takes a Postgres advisory
+  lock that can time out through the pooler (`P1002`). The app keeps using the pooled URL.
 - **Why the region pin matters**: Vercel's default function region (`iad1`, US East) and the
   database region (`ap-southeast-1`, Singapore) being different was the root cause of a real
   production slowness issue — every DB round trip crossed the Pacific. `vercel.json`'s

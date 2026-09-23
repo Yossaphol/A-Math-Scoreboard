@@ -9,7 +9,11 @@ export default defineConfig({
     path: "prisma/migrations",
     seed: "tsx prisma/seed.ts",
   },
+  // CLI only (migrate/studio/db) — the app itself connects via DATABASE_URL in src/lib/prisma.ts.
+  // Migrations take a Postgres advisory lock, which is unreliable through the connection pooler
+  // (pooled.db.prisma.io) and timed out a production build (P1002), so prefer the direct
+  // connection (db.prisma.io) when it's set.
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"],
   },
 });
