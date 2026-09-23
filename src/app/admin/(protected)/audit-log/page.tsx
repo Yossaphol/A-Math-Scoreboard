@@ -51,7 +51,11 @@ export default async function AuditLogPage(props: PageProps<"/admin/audit-log">)
               {entries.map((e) => (
                 <tr key={e.id} className="border-b border-neutral-100 last:border-0 align-top">
                   <td className="whitespace-nowrap py-3 pl-5 pr-3 text-xs text-neutral-500">
-                    {e.createdAt.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
+                    {e.createdAt.toLocaleString("th-TH", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                      timeZone: "Asia/Bangkok",
+                    })}
                   </td>
                   <td className="py-3 pr-3 text-xs text-neutral-500">
                     {e.actor.name || e.actor.email}
