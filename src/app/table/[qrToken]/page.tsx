@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getActiveMatchForTable } from "@/lib/match/lookup";
 import { submitMatchResult } from "@/lib/actions/match";
 import { ResultForm } from "@/components/match/ResultForm";
@@ -7,6 +8,7 @@ const RESULT_LABEL: Record<string, string> = { WIN: "ชนะ", TIE: "เสม
 
 export default async function TableMatchPage(props: PageProps<"/table/[qrToken]">) {
   const { qrToken } = await props.params;
+  const { side: sideParam } = await props.searchParams;
   const result = await getActiveMatchForTable(qrToken);
 
   if ("error" in result) {
@@ -65,6 +67,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
   const submissionBySide = new Map(match.submissions.map((s) => [s.side, s]));
   const player1Name = match.player1.globalPlayer.name;
   const player2Name = match.player2!.globalPlayer.name;
+  const chosenSide = sideParam === "PLAYER1" || sideParam === "PLAYER2" ? sideParam : undefined;
 
   return (
     <main className="mx-auto max-w-md px-4 py-10">
@@ -96,7 +99,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               player1Name={player1Name}
               player2Name={player2Name}
               previous={submissionBySide.get("PLAYER1")}
-              heading="ผลที่ฝั่งแรกส่ง"
+              heading={`ผลที่ ${player1Name} ส่ง`}
             />
             <ResultForm
               action={submitMatchResult}
@@ -106,28 +109,50 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               player1Name={player1Name}
               player2Name={player2Name}
               previous={submissionBySide.get("PLAYER2")}
-              heading="ผลที่ฝั่งที่สองส่ง"
+              heading={`ผลที่ ${player2Name} ส่ง`}
             />
           </>
-        ) : (
-          // PENDING (no reports yet) or SUBMITTED (one side already reported) — only the
-          // remaining, still-empty slot needs a form; spec §13's cross-check (submitMatchResult
-          // comparing both submissions) is unchanged, this just avoids showing an already-filled
-          // side's form to the next person at the table.
+        ) : chosenSide ? (
+          // Person picked which side they are — show their form, pre-filled if they (or
+          // whoever had the phone before them) already sent something for this side.
           <>
-            {match.status === "SUBMITTED" && (
-              <p className="text-center text-xs text-neutral-500">
-                อีกฝ่ายส่งผลแล้ว กรุณากรอกผลของอีกฝ่ายเพื่อยืนยัน
-              </p>
-            )}
+            <p className="text-center text-xs text-neutral-400">
+              <Link href={`/table/${qrToken}`} className="hover:underline">
+                ไม่ใช่ฝั่งนี้? เลือกใหม่
+              </Link>
+            </p>
             <ResultForm
               action={submitMatchResult}
               extraHiddenFields={{ qrToken }}
               matchId={match.id}
-              side={submissionBySide.has("PLAYER1") ? "PLAYER2" : "PLAYER1"}
+              side={chosenSide}
               player1Name={player1Name}
               player2Name={player2Name}
+              previous={submissionBySide.get(chosenSide)}
             />
+          </>
+        ) : (
+          // Ask explicitly which side is about to submit, instead of guessing from
+          // submission state — whoever has the phone picks their own name.
+          <>
+            <p className="text-center text-sm text-neutral-500">คุณคือฝั่งไหน?</p>
+            <div className="grid grid-cols-2 gap-3">
+              {(
+                [
+                  ["PLAYER1", player1Name],
+                  ["PLAYER2", player2Name],
+                ] as const
+              ).map(([side, name]) => (
+                <Link key={side} href={`/table/${qrToken}?side=${side}`} className="block">
+                  <Card padding="p-4" className="text-center transition-shadow hover:shadow-md">
+                    <p className="font-medium text-neutral-900">{name}</p>
+                    {submissionBySide.has(side) && (
+                      <p className="mt-1 text-[11px] text-neutral-400">ส่งผลแล้ว — แก้ไขได้</p>
+                    )}
+                  </Card>
+                </Link>
+              ))}
+            </div>
           </>
         )}
       </div>
