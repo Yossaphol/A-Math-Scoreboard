@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertTournamentAccess } from "@/lib/dal";
@@ -9,6 +10,7 @@ import { getFirstSecondTotals, assignFirstSecond } from "@/lib/pairing/first-sec
 import { maybeCompleteRound } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
 import { publicTournamentPath } from "@/lib/tournament-path";
+import { logAdminAction } from "@/lib/audit-log";
 import type { PairingMethod } from "@/generated/prisma/enums";
 
 const startPairingSchema = z.object({
@@ -224,4 +226,43 @@ export async function cancelPreview(formData: FormData) {
   await setFlash("ยกเลิก Pairing Preview แล้ว");
   revalidatePath(`/admin/tournaments/${round.tournamentId}`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
+}
+
+// Lets Admin/Staff undo a round created by mistake — deliberately restricted to the LATEST
+// round only (any status: Preview/Confirmed/Completed), never a round in the middle, since
+// deleting one there would leave a gap in roundNumber and desync every later round's pairing
+// (Swiss avoid-rematch, standings) from what actually happened. Deleting cascades to that
+// round's Matches/MatchSubmissions (schema onDelete: Cascade) — any scores already recorded
+// for it are gone for good, so this is one of the actions written to the Audit Log.
+export async function deleteRound(formData: FormData) {
+  const roundId = String(formData.get("roundId"));
+  const round = await prisma.round.findUniqueOrThrow({
+    where: { id: roundId },
+    include: { tournament: { select: { mode: true } } },
+  });
+  const admin = await assertTournamentAccess(round.tournamentId);
+
+  const latest = await prisma.round.findFirst({
+    where: { tournamentId: round.tournamentId },
+    orderBy: { roundNumber: "desc" },
+  });
+  if (latest?.id !== roundId) {
+    throw new Error("ลบได้เฉพาะ Round ล่าสุดเท่านั้น — ต้องลบ Round ที่สร้างหลังจากนี้ก่อน");
+  }
+
+  await prisma.round.delete({ where: { id: roundId } });
+
+  await logAdminAction({
+    actorId: admin.id,
+    action: "round.delete",
+    summary: `ลบ Round ${round.roundNumber} (สถานะตอนลบ: ${round.status})`,
+    targetType: "Round",
+    targetId: round.id,
+  });
+
+  await setFlash(`ลบ Round ${round.roundNumber} แล้ว`);
+  revalidatePath(`/admin/tournaments/${round.tournamentId}`);
+  revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
+  revalidatePath(publicTournamentPath({ id: round.tournamentId, mode: round.tournament.mode }));
+  redirect(`/admin/tournaments/${round.tournamentId}/rounds`);
 }

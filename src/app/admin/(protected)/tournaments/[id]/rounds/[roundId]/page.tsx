@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { requireTournamentAccess } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { adminSetMatchResult } from "@/lib/actions/match";
+import { deleteRound } from "@/lib/actions/pairing";
 import { cappedDiff } from "@/lib/match/diff";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { MATCH_STATUS_BADGE, ROUND_STATUS_BADGE, MATCH_OUTCOME_BADGE } from "@/lib/status-labels";
 import type { MatchOutcome } from "@/generated/prisma/enums";
 
@@ -40,6 +42,13 @@ export default async function AdminRoundDetailPage(
     },
   });
   if (!round || round.tournamentId !== id) notFound();
+
+  const latestRound = await prisma.round.findFirst({
+    where: { tournamentId: id },
+    orderBy: { roundNumber: "desc" },
+    select: { id: true },
+  });
+  const isLatestRound = latestRound?.id === round.id;
 
   const roundStatus = ROUND_STATUS_BADGE[round.status];
 
@@ -95,7 +104,26 @@ export default async function AdminRoundDetailPage(
     <div>
       <PageHeader
         title={`Round ${round.roundNumber}`}
-        actions={<Badge variant={roundStatus.variant}>{roundStatus.label}</Badge>}
+        actions={
+          <div className="flex items-center gap-3">
+            <Badge variant={roundStatus.variant}>{roundStatus.label}</Badge>
+            {isLatestRound && (
+              <form action={deleteRound}>
+                <input type="hidden" name="roundId" value={round.id} />
+                <ConfirmSubmitButton
+                  label="ลบ Round"
+                  confirmTitle={`ลบ Round ${round.roundNumber}?`}
+                  confirmMessage={
+                    round.status === "PREVIEW"
+                      ? "Round นี้ยังไม่ Confirm ลบได้โดยไม่มีผลอะไร"
+                      : `Match ทุกอันใน Round นี้ (${round.matches.length} แมตช์) จะถูกลบทิ้งไปด้วย รวมคะแนนที่กรอกไปแล้ว — แก้คืนไม่ได้ ใช้เมื่อสร้าง Round นี้ผิดและต้องการสร้างใหม่เท่านั้น`
+                  }
+                  size="sm"
+                />
+              </form>
+            )}
+          </div>
+        }
       />
 
       {roundRows.length > 0 && (
