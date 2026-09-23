@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LinkRow } from "@/components/ui/LinkRow";
 import { ROUND_STATUS_BADGE } from "@/lib/status-labels";
 
 export default async function AdminRoundsPage(props: PageProps<"/admin/tournaments/[id]/rounds">) {
@@ -33,7 +34,11 @@ export default async function AdminRoundsPage(props: PageProps<"/admin/tournamen
           {rounds.map((r) => {
             const status = ROUND_STATUS_BADGE[r.status];
             return (
-              <tr key={r.id} className="border-b border-neutral-100 last:border-0">
+              <LinkRow
+                key={r.id}
+                href={`/admin/tournaments/${id}/rounds/${r.id}`}
+                className="border-b border-neutral-100 last:border-0"
+              >
                 <td className="py-3 pl-5 pr-3">
                   <Link
                     href={`/admin/tournaments/${id}/rounds/${r.id}`}
@@ -48,7 +53,7 @@ export default async function AdminRoundsPage(props: PageProps<"/admin/tournamen
                 <td className="py-3 pr-5">
                   <Badge variant={status.variant}>{status.label}</Badge>
                 </td>
-              </tr>
+              </LinkRow>
             );
           })}
         </tbody>

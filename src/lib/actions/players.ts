@@ -16,6 +16,47 @@ const addPlayerSchema = z.object({
   nickname: z.string().trim().optional(),
 });
 
+export type GlobalPlayerSearchResult = {
+  id: number;
+  name: string;
+  nickname: string | null;
+  inTournament: boolean;
+};
+
+// Backs the live search in the "add player" modal on the tournament Players tab — finds
+// existing Global Players (by name, nickname or exact Global Player ID) to reuse.
+export async function searchGlobalPlayersForTournament(
+  tournamentId: string,
+  query: string
+): Promise<GlobalPlayerSearchResult[]> {
+  await assertTournamentAccess(tournamentId);
+  const q = query.trim();
+  if (!q) return [];
+
+  const asId = Number(q);
+  const [results, inTournament] = await Promise.all([
+    prisma.globalPlayer.findMany({
+      where: {
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { nickname: { contains: q, mode: "insensitive" } },
+          ...(Number.isInteger(asId) && asId > 0 ? [{ id: asId }] : []),
+        ],
+      },
+      take: 10,
+      orderBy: { name: "asc" },
+    }),
+    prisma.tournamentPlayer.findMany({ where: { tournamentId }, select: { globalPlayerId: true } }),
+  ]);
+  const already = new Set(inTournament.map((p) => p.globalPlayerId));
+  return results.map((gp) => ({
+    id: gp.id,
+    name: gp.name,
+    nickname: gp.nickname,
+    inTournament: already.has(gp.id),
+  }));
+}
+
 // Spec §1: Admin/Staff manage players directly — no self-signup. New players get the next
 // sequential Tournament Player ID (per-tournament, starting at 1); existing Global Players
 // can be reused across tournaments while keeping the same Global Player ID.

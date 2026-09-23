@@ -1,18 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import {
-  addPlayerToTournament,
-  removePlayerFromTournament,
-  withdrawPlayer,
-  reactivatePlayer,
-} from "@/lib/actions/players";
-import { Card } from "@/components/ui/Card";
+import { removePlayerFromTournament, withdrawPlayer, reactivatePlayer } from "@/lib/actions/players";
 import { Button } from "@/components/ui/Button";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Badge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { inputClass } from "@/components/ui/styles";
-import { AddTournamentPlayerModal, ImportPlayersModal } from "@/components/admin/TournamentPlayerModals";
+import { AddPlayerModal, ImportPlayersModal } from "@/components/admin/TournamentPlayerModals";
 import { ExpandablePlayerRow } from "@/components/admin/ExpandablePlayerRow";
+import { PlayersTable } from "@/components/admin/PlayersTable";
+import { cappedDiff } from "@/lib/match/diff";
+import { getMaxScoreConfig } from "@/lib/match/max-score-config";
 import { MATCH_OUTCOME_BADGE, MATCH_STATUS_BADGE, PLAYER_STATUS_BADGE } from "@/lib/status-labels";
 import type { MatchOutcome, MatchStatus } from "@/generated/prisma/enums";
 
@@ -24,6 +19,9 @@ type HistoryEntry = {
   opponent: string | null; // null => Bye
   myScore: number | null;
   oppScore: number | null;
+  // Spread as counted for standings (capped by the round's Maximum Score) vs. the real one.
+  diff: number | null;
+  rawDiff: number | null;
   result: MatchOutcome | null;
   status: MatchStatus;
 };
@@ -32,8 +30,6 @@ export default async function TournamentPlayersPage(
   props: PageProps<"/admin/tournaments/[id]/players">
 ) {
   const { id } = await props.params;
-  const { playerQuery } = await props.searchParams;
-  const query = typeof playerQuery === "string" ? playerQuery.trim() : "";
 
   const [tournament, players, matches] = await Promise.all([
     prisma.tournament.findUniqueOrThrow({ where: { id } }),
@@ -63,6 +59,10 @@ export default async function TournamentPlayersPage(
     historyByPlayer.set(playerId, list);
   }
   for (const m of matches) {
+    const cap = getMaxScoreConfig(m);
+    const scored = !m.isBye && m.finalPlayer1Score != null && m.finalPlayer2Score != null;
+    const p1 = m.finalPlayer1Score ?? 0;
+    const p2 = m.finalPlayer2Score ?? 0;
     const base = {
       matchId: m.id,
       roundNumber: m.round?.roundNumber ?? null,
@@ -75,6 +75,8 @@ export default async function TournamentPlayersPage(
       opponent: m.player2?.globalPlayer.name ?? null,
       myScore: m.finalPlayer1Score,
       oppScore: m.finalPlayer2Score,
+      diff: scored ? cappedDiff(p1, p2, cap.enabled, cap.max) : null,
+      rawDiff: scored ? p1 - p2 : null,
       result: m.player1Result,
     });
     if (m.player2Id && m.player2) {
@@ -83,6 +85,8 @@ export default async function TournamentPlayersPage(
         opponent: m.player1.globalPlayer.name,
         myScore: m.finalPlayer2Score,
         oppScore: m.finalPlayer1Score,
+        diff: scored ? cappedDiff(p2, p1, cap.enabled, cap.max) : null,
+        rawDiff: scored ? p2 - p1 : null,
         result: m.player2Result,
       });
     }
@@ -96,151 +100,92 @@ export default async function TournamentPlayersPage(
     });
   }
 
-  const alreadyInTournament = new Set(players.map((p) => p.globalPlayerId));
-  const queryAsId = Number(query);
-  const searchResults = query
-    ? await prisma.globalPlayer.findMany({
-        where: {
-          OR: [
-            { name: { contains: query, mode: "insensitive" } },
-            { nickname: { contains: query, mode: "insensitive" } },
-            ...(Number.isInteger(queryAsId) ? [{ id: queryAsId }] : []),
-          ],
-        },
-        take: 10,
-        orderBy: { name: "asc" },
-      })
-    : [];
+  const header = (
+    <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
+      <th className="w-8 py-3 pl-4" aria-label="ประวัติ" />
+      <th className="py-3 pr-3">#</th>
+      <th className="py-3 pr-3">Name</th>
+      <th className="py-3 pr-3">Global Player ID</th>
+      <th className="py-3 pr-3">Status</th>
+      <th className="py-3 pr-5 text-right">Actions</th>
+    </tr>
+  );
+
+  const rows = players.map((p) => {
+    const status = PLAYER_STATUS_BADGE[p.status];
+    const history = historyByPlayer.get(p.id) ?? [];
+    return {
+      id: p.id,
+      searchText: [p.globalPlayer.name, p.globalPlayer.nickname, `#${p.tournamentPlayerNo}`, `#${p.globalPlayerId}`]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase(),
+      node: (
+        <ExpandablePlayerRow colSpan={5} history={<PlayerHistory history={history} />}>
+          <td className="py-3 pr-3 text-neutral-500">{p.tournamentPlayerNo}</td>
+          <td className="py-3 pr-3">
+            {p.globalPlayer.name}
+            {p.globalPlayer.nickname && (
+              <span className="ml-2 text-xs text-neutral-500">{p.globalPlayer.nickname}</span>
+            )}
+          </td>
+          <td className="py-3 pr-3 text-xs text-neutral-400">#{p.globalPlayerId}</td>
+          <td className="py-3 pr-3">
+            <Badge variant={status.variant}>{status.label}</Badge>
+          </td>
+          <td className="py-3 pr-5 text-right" data-no-row-toggle>
+            <div className="flex justify-end gap-2">
+              {p.status === "ACTIVE" ? (
+                <form action={withdrawPlayer}>
+                  <input type="hidden" name="tournamentPlayerId" value={p.id} />
+                  <ConfirmSubmitButton
+                    label="Withdraw"
+                    variant="secondary"
+                    confirmTitle="Withdraw ผู้เล่น?"
+                    confirmMessage={`${p.globalPlayer.name} จะไม่ถูกจับคู่ใน Round ถัดไป แต่ประวัติเดิมยังอยู่ (Withdraw ≠ Delete)`}
+                  />
+                </form>
+              ) : (
+                <form action={reactivatePlayer}>
+                  <input type="hidden" name="tournamentPlayerId" value={p.id} />
+                  <Button type="submit" variant="secondary" size="sm">
+                    Reactivate
+                  </Button>
+                </form>
+              )}
+              {tournament.status === "UPCOMING" && (
+                <form action={removePlayerFromTournament}>
+                  <input type="hidden" name="tournamentPlayerId" value={p.id} />
+                  <ConfirmSubmitButton
+                    label="Remove"
+                    confirmTitle="ลบผู้เล่นออกจาก Tournament?"
+                    confirmMessage={`${p.globalPlayer.name} จะถูกลบออกทั้งหมด — ใช้เมื่อ Import ผิดหรือผู้เล่นไม่เข้าร่วมเท่านั้น`}
+                  />
+                </form>
+              )}
+            </div>
+          </td>
+        </ExpandablePlayerRow>
+      ),
+    };
+  });
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2">
-        <form className="min-w-[14rem] flex-1">
-          <input type="hidden" name="tab" value="players" />
-          <input
-            type="search"
-            name="playerQuery"
-            defaultValue={query}
-            placeholder="ค้นหาผู้เล่นที่มีอยู่แล้วเพื่อเพิ่มเข้า Tournament (ชื่อ, Nickname หรือ Global Player ID)..."
-            className={inputClass}
-          />
-        </form>
-        <AddTournamentPlayerModal tournamentId={id} />
-        <ImportPlayersModal tournamentId={id} />
-      </div>
-
-      {query && (
-        <Card padding="px-5 py-2" className="mt-3">
-          <ul className="divide-y divide-neutral-100">
-            {searchResults.map((gp) => {
-              const already = alreadyInTournament.has(gp.id);
-              return (
-                <li key={gp.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <div className="min-w-0 truncate">
-                    <span className="font-medium">{gp.name}</span>
-                    {gp.nickname && <span className="ml-2 text-xs text-neutral-500">{gp.nickname}</span>}
-                    <span className="ml-2 text-xs text-neutral-400">#{gp.id}</span>
-                  </div>
-                  {already ? (
-                    <Badge variant="neutral" className="shrink-0">
-                      อยู่ใน Tournament นี้แล้ว
-                    </Badge>
-                  ) : (
-                    <form action={addPlayerToTournament} className="shrink-0">
-                      <input type="hidden" name="tournamentId" value={id} />
-                      <input type="hidden" name="globalPlayerId" value={gp.id} />
-                      <Button type="submit" variant="secondary" size="sm">
-                        + เพิ่มเข้า Tournament
-                      </Button>
-                    </form>
-                  )}
-                </li>
-              );
-            })}
-            {searchResults.length === 0 && (
-              <li className="py-4 text-center text-xs text-neutral-500">
-                ไม่พบผู้เล่นที่ตรงกับ &quot;{query}&quot; — กด &quot;+ เพิ่มผู้เล่นใหม่&quot; เพื่อสร้างใหม่
-              </li>
-            )}
-          </ul>
-        </Card>
-      )}
-
-      <Card padding="p-0" className="mt-4 overflow-x-auto">
-        {players.length === 0 ? (
-          <div className="p-6">
-            <EmptyState title="ยังไม่มีผู้เล่น" />
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
-                <th className="w-8 py-3 pl-4" aria-label="ประวัติ" />
-                <th className="py-3 pr-3">#</th>
-                <th className="py-3 pr-3">Name</th>
-                <th className="py-3 pr-3">Global Player ID</th>
-                <th className="py-3 pr-3">Status</th>
-                <th className="py-3 pr-5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {players.map((p) => {
-                const status = PLAYER_STATUS_BADGE[p.status];
-                const history = historyByPlayer.get(p.id) ?? [];
-                return (
-                  <ExpandablePlayerRow key={p.id} colSpan={5} history={<PlayerHistory history={history} />}>
-                    <td className="py-3 pr-3 text-neutral-500">{p.tournamentPlayerNo}</td>
-                    <td className="py-3 pr-3">
-                      {p.globalPlayer.name}
-                      {p.globalPlayer.nickname && (
-                        <span className="ml-2 text-xs text-neutral-500">{p.globalPlayer.nickname}</span>
-                      )}
-                    </td>
-                    <td className="py-3 pr-3 text-xs text-neutral-400">#{p.globalPlayerId}</td>
-                    <td className="py-3 pr-3">
-                      <Badge variant={status.variant}>{status.label}</Badge>
-                    </td>
-                    <td className="py-3 pr-5 text-right" data-no-row-toggle>
-                      <div className="flex justify-end gap-2">
-                        {p.status === "ACTIVE" ? (
-                          <form action={withdrawPlayer}>
-                            <input type="hidden" name="tournamentPlayerId" value={p.id} />
-                            <ConfirmSubmitButton
-                              label="Withdraw"
-                              variant="secondary"
-                              confirmTitle="Withdraw ผู้เล่น?"
-                              confirmMessage={`${p.globalPlayer.name} จะไม่ถูกจับคู่ใน Round ถัดไป แต่ประวัติเดิมยังอยู่ (Withdraw ≠ Delete)`}
-                            />
-                          </form>
-                        ) : (
-                          <form action={reactivatePlayer}>
-                            <input type="hidden" name="tournamentPlayerId" value={p.id} />
-                            <Button type="submit" variant="secondary" size="sm">
-                              Reactivate
-                            </Button>
-                          </form>
-                        )}
-                        {tournament.status === "UPCOMING" && (
-                          <form action={removePlayerFromTournament}>
-                            <input type="hidden" name="tournamentPlayerId" value={p.id} />
-                            <ConfirmSubmitButton
-                              label="Remove"
-                              confirmTitle="ลบผู้เล่นออกจาก Tournament?"
-                              confirmMessage={`${p.globalPlayer.name} จะถูกลบออกทั้งหมด — ใช้เมื่อ Import ผิดหรือผู้เล่นไม่เข้าร่วมเท่านั้น`}
-                            />
-                          </form>
-                        )}
-                      </div>
-                    </td>
-                  </ExpandablePlayerRow>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </Card>
-    </div>
+    <PlayersTable
+      header={header}
+      rows={rows}
+      actions={
+        <>
+          <AddPlayerModal tournamentId={id} />
+          <ImportPlayersModal tournamentId={id} />
+        </>
+      }
+    />
   );
+}
+
+function signed(n: number) {
+  return n > 0 ? `+${n}` : String(n);
 }
 
 function PlayerHistory({ history }: { history: HistoryEntry[] }) {
@@ -255,9 +200,10 @@ function PlayerHistory({ history }: { history: HistoryEntry[] }) {
           <tr className="border-b border-neutral-200/70 text-left text-neutral-500">
             <th className="py-2 pl-4 pr-3 font-medium">Round</th>
             <th className="py-2 pr-3 font-medium">โต๊ะ</th>
+            <th className="py-2 pr-3 text-center font-medium">ผล</th>
             <th className="py-2 pr-3 font-medium">คู่แข่ง</th>
             <th className="py-2 pr-3 text-right font-medium">คะแนน</th>
-            <th className="py-2 pr-3 text-center font-medium">ผล</th>
+            <th className="py-2 pr-3 text-right font-medium">ผลต่าง</th>
             <th className="py-2 pr-4 text-right font-medium">สถานะ</th>
           </tr>
         </thead>
@@ -265,18 +211,36 @@ function PlayerHistory({ history }: { history: HistoryEntry[] }) {
           {history.map((h) => {
             const outcome = h.result ? MATCH_OUTCOME_BADGE[h.result] : null;
             const matchStatus = MATCH_STATUS_BADGE[h.status];
+            const capped = h.diff != null && h.rawDiff != null && h.diff !== h.rawDiff;
             return (
               <tr key={h.matchId} className="border-b border-neutral-100 last:border-0">
                 <td className="py-2 pl-4 pr-3 text-neutral-500">
                   {h.roundNumber != null ? `R${h.roundNumber}` : "ฝึกซ้อม"}
                 </td>
                 <td className="py-2 pr-3 text-neutral-500">{h.tableNumber ?? "—"}</td>
-                <td className="py-2 pr-3">{h.opponent ? `vs ${h.opponent}` : "Bye"}</td>
-                <td className="py-2 pr-3 text-right font-medium tabular-nums">
-                  {h.opponent && h.myScore != null && h.oppScore != null ? `${h.myScore} - ${h.oppScore}` : "—"}
-                </td>
                 <td className="py-2 pr-3 text-center">
                   {outcome ? <Badge variant={outcome.variant}>{outcome.label}</Badge> : "—"}
+                </td>
+                <td className="py-2 pr-3">{h.opponent ?? "Bye"}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">
+                  {h.opponent && h.myScore != null && h.oppScore != null ? `${h.myScore} - ${h.oppScore}` : "—"}
+                </td>
+                <td className="py-2 pr-3 text-right font-medium tabular-nums">
+                  {h.diff == null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {signed(h.diff)}
+                      {capped && (
+                        <span
+                          className="ml-1 font-normal text-neutral-400"
+                          title="เกิน Maximum Score ของ Round นี้ — ในวงเล็บคือผลต่างจริง"
+                        >
+                          ({signed(h.rawDiff!)})
+                        </span>
+                      )}
+                    </>
+                  )}
                 </td>
                 <td className="py-2 pr-4 text-right">
                   <Badge variant={matchStatus.variant}>{matchStatus.label}</Badge>
