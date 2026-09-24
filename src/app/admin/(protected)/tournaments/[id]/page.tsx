@@ -31,6 +31,7 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
         include: {
           player1: { include: { globalPlayer: true } },
           player2: { include: { globalPlayer: true } },
+          table: { select: { tableNumber: true } },
         },
       },
     },
@@ -168,6 +169,7 @@ type PreviewRound = {
     player2Id: string | null;
     firstPlayerId: string | null;
     secondPlayerId: string | null;
+    table: { tableNumber: number } | null;
     player1: { tournamentPlayerNo: number; globalPlayer: { name: string } };
     player2: { tournamentPlayerNo: number; globalPlayer: { name: string } } | null;
   }[];
@@ -202,6 +204,7 @@ function RoundPreviewSection({
 }) {
   const matches: PreviewMatch[] = round.matches.map((m) => ({
     id: m.id,
+    tableNumber: m.table?.tableNumber ?? null,
     player1: toSlot(
       m.player1Id,
       m.player1,
@@ -219,6 +222,8 @@ function RoundPreviewSection({
         )
       : null,
   }));
+  // Seated matches in table order so the list mirrors the room; Byes (no table) go last.
+  matches.sort((a, b) => (a.tableNumber ?? Infinity) - (b.tableNumber ?? Infinity));
 
   return (
     <div className="mb-6">

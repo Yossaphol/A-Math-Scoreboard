@@ -19,6 +19,7 @@ export type PreviewSlot = {
 
 export type PreviewMatch = {
   id: string;
+  tableNumber: number | null; // null = Bye, or no free table left
   player1: PreviewSlot;
   player2: PreviewSlot | null; // null = Bye
 };
@@ -64,6 +65,7 @@ export function RoundPreviewBoard({ roundId, matches }: { roundId: string; match
         <li key={m.id}>
           <Card padding="p-4" className={isPending ? "opacity-60 transition-opacity" : "transition-opacity"}>
             <div className="flex items-center justify-between gap-2 sm:gap-4">
+              <TableBadge tableNumber={m.tableNumber} />
               <PlayerCard
                 slot={m.player1}
                 selected={selected === m.player1.playerId}
@@ -94,6 +96,21 @@ export function RoundPreviewBoard({ roundId, matches }: { roundId: string; match
         </li>
       ))}
     </ul>
+  );
+}
+
+// Fixed-width so every card's players line up in the same columns down the list.
+function TableBadge({ tableNumber }: { tableNumber: number | null }) {
+  return (
+    <div
+      className="flex w-12 shrink-0 flex-col items-center justify-center self-stretch rounded-lg bg-neutral-100 py-1 sm:w-14"
+      aria-label={tableNumber != null ? `โต๊ะ ${tableNumber}` : "ไม่มีโต๊ะ"}
+    >
+      <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">โต๊ะ</span>
+      <span className="text-lg font-semibold leading-tight tabular-nums text-neutral-900">
+        {tableNumber ?? "—"}
+      </span>
+    </div>
   );
 }
 
