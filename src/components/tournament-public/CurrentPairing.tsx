@@ -3,24 +3,32 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { inputClass } from "@/components/ui/styles";
-import { MATCH_STATUS_BADGE } from "@/lib/status-labels";
+import { MATCH_STATUS_BADGE, ROUND_STATUS_BADGE } from "@/lib/status-labels";
 
 /** Shared body of the /t/[id] and /practice/[id] "current pairing" tab. */
 export async function CurrentPairing({ tournamentId }: { tournamentId: string }) {
   // Only ever show a Confirmed/Completed round publicly — a Preview is not real yet (spec §9/§10).
-  const currentRound = await prisma.round.findFirst({
-    where: { tournamentId, status: { in: ["CONFIRMED", "COMPLETED"] } },
-    orderBy: { roundNumber: "desc" },
-    include: {
-      matches: {
-        include: {
-          player1: { include: { globalPlayer: true } },
-          player2: { include: { globalPlayer: true } },
+  const [tournament, currentRound] = await Promise.all([
+    prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: { setNumberOfGames: true, numberOfGames: true },
+    }),
+    prisma.round.findFirst({
+      where: { tournamentId, status: { in: ["CONFIRMED", "COMPLETED"] } },
+      orderBy: { roundNumber: "desc" },
+      include: {
+        matches: {
+          include: {
+            player1: { include: { globalPlayer: true } },
+            player2: { include: { globalPlayer: true } },
+          },
+          orderBy: { tableId: "asc" },
         },
-        orderBy: { tableId: "asc" },
       },
-    },
-  });
+    }),
+  ]);
+  const totalRounds = tournament?.setNumberOfGames ? tournament.numberOfGames : null;
+  const roundStatus = currentRound ? ROUND_STATUS_BADGE[currentRound.status] : null;
 
   return (
     <div>
@@ -31,6 +39,29 @@ export async function CurrentPairing({ tournamentId }: { tournamentId: string })
           className={inputClass}
         />
       </form>
+
+      {/* Always say which Round is on screen — otherwise a finished Round reads as the live one. */}
+      {currentRound && roundStatus && (
+        <Card padding="p-4" className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs text-neutral-500">กำลังแสดงการจับคู่ของ</p>
+            <p className="text-xl font-semibold text-neutral-900">
+              Round {currentRound.roundNumber}
+              {totalRounds != null && (
+                <span className="ml-1 text-sm font-normal text-neutral-400">/ {totalRounds}</span>
+              )}
+            </p>
+            {currentRound.status === "COMPLETED" && (
+              <p className="mt-0.5 text-xs text-neutral-500">
+                Round นี้จบแล้ว — รอ Admin/Staff จับคู่ Round ถัดไป
+              </p>
+            )}
+          </div>
+          <Badge variant={roundStatus.variant} className="shrink-0">
+            {roundStatus.label}
+          </Badge>
+        </Card>
+      )}
 
       {!currentRound && <EmptyState title="ยังไม่มี Round ใน Tournament นี้" />}
 
