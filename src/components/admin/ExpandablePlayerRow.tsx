@@ -5,8 +5,9 @@ import { useState } from "react";
 /**
  * A players-table row that toggles a detail row (the player's round-by-round history) below
  * it on click. Cells and the history are rendered on the server and passed in as children.
- * Clicks that start on an interactive element (the Withdraw/Remove buttons, their confirm
- * dialog) are ignored so row actions never also toggle the history.
+ * Clicks that start on an interactive element (the ⋯ action menu — portaled, but React still
+ * bubbles its events here — or a confirm dialog) are ignored so row actions never also toggle
+ * the history.
  */
 export function ExpandablePlayerRow({
   colSpan,
@@ -21,7 +22,7 @@ export function ExpandablePlayerRow({
 
   function handleClick(e: React.MouseEvent<HTMLTableRowElement>) {
     const target = e.target as HTMLElement;
-    if (target.closest("[data-no-row-toggle], [role=dialog], button, a, input, select, textarea, form")) return;
+    if (target.closest("[data-no-row-toggle], [role=dialog], [role=menu], button, a, input, select, textarea, form")) return;
     setOpen((o) => !o);
   }
 

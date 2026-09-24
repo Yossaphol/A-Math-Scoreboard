@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { removePlayerFromTournament, withdrawPlayer, reactivatePlayer } from "@/lib/actions/players";
-import { Button } from "@/components/ui/Button";
+import { buttonBase, SIZES, VARIANTS } from "@/components/ui/Button";
+import { ActionMenu } from "@/components/ui/ActionMenu";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Badge } from "@/components/ui/Badge";
 import { AddPlayerModal, ImportPlayersModal } from "@/components/admin/TournamentPlayerModals";
@@ -35,8 +36,8 @@ export default async function TournamentPlayersPage(
 ) {
   const { id } = await props.params;
 
-  const [tournament, players, matches, absences] = await Promise.all([
-    prisma.tournament.findUniqueOrThrow({ where: { id } }),
+  const [, players, matches, absences] = await Promise.all([
+    prisma.tournament.findUniqueOrThrow({ where: { id } }), // 404s an unknown id
     prisma.tournamentPlayer.findMany({
       where: { tournamentId: id },
       include: { globalPlayer: true },
@@ -149,7 +150,7 @@ export default async function TournamentPlayersPage(
       <th className="py-3 pr-3">Name</th>
       <th className="py-3 pr-3">Global Player ID</th>
       <th className="py-3 pr-3">Status</th>
-      <th className="py-3 pr-5 text-right">Actions</th>
+      <th className="py-3 pr-5 text-center">Actions</th>
     </tr>
   );
 
@@ -175,37 +176,57 @@ export default async function TournamentPlayersPage(
           <td className="py-3 pr-3">
             <Badge variant={status.variant}>{status.label}</Badge>
           </td>
-          <td className="py-3 pr-5 text-right" data-no-row-toggle>
-            <div className="flex justify-end gap-2">
+          <td className="py-3 pr-5 text-center" data-no-row-toggle>
+            <ActionMenu>
               {p.status === "ACTIVE" ? (
                 <form action={withdrawPlayer}>
                   <input type="hidden" name="tournamentPlayerId" value={p.id} />
                   <ConfirmSubmitButton
-                    label="Withdraw"
+                    label="ถอนตัว"
                     variant="secondary"
-                    confirmTitle="Withdraw ผู้เล่น?"
-                    confirmMessage={`${p.globalPlayer.name} จะไม่ถูกจับคู่ใน Round ถัดไป แต่ประวัติเดิมยังอยู่ (Withdraw ≠ Delete)`}
+                    confirmTitle={`ถอนตัว "${p.globalPlayer.name}"?`}
+                    confirmMessage="ผู้เล่นจะไม่ถูกจับคู่ใน Round ถัดไป แต่ผลการแข่งที่ผ่านมายังอยู่ครบ กลับเข้าแข่งขันได้ภายหลัง"
+                    className="w-full"
                   />
                 </form>
               ) : (
                 <form action={reactivatePlayer}>
                   <input type="hidden" name="tournamentPlayerId" value={p.id} />
-                  <Button type="submit" variant="secondary" size="sm">
-                    Reactivate
-                  </Button>
+                  <button
+                    type="submit"
+                    className={`${buttonBase} ${VARIANTS.secondary} ${SIZES.sm} w-full`}
+                  >
+                    กลับเข้าแข่งขัน
+                  </button>
                 </form>
               )}
-              {tournament.status === "UPCOMING" && (
+              {history.length === 0 ? (
                 <form action={removePlayerFromTournament}>
                   <input type="hidden" name="tournamentPlayerId" value={p.id} />
                   <ConfirmSubmitButton
-                    label="Remove"
-                    confirmTitle="ลบผู้เล่นออกจาก Tournament?"
-                    confirmMessage={`${p.globalPlayer.name} จะถูกลบออกทั้งหมด — ใช้เมื่อ Import ผิดหรือผู้เล่นไม่เข้าร่วมเท่านั้น`}
+                    label="ลบจากการแข่งขัน"
+                    confirmTitle={`ลบ "${p.globalPlayer.name}" ออกจากการแข่งขัน?`}
+                    confirmMessage="ผู้เล่นจะถูกนำออกจาก Tournament นี้ (ยังอยู่ใน Global Players) ใช้เมื่อเพิ่มผิดคนหรือผู้เล่นไม่มาร่วมแข่ง"
+                    className="w-full"
                   />
                 </form>
+              ) : (
+                // Kept visible (not hidden) so staff learn why it's unavailable instead of hunting for it.
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    disabled
+                    aria-describedby={`remove-hint-${p.id}`}
+                    className={`${buttonBase} ${VARIANTS.danger} ${SIZES.sm} w-full`}
+                  >
+                    ลบจากการแข่งขัน
+                  </button>
+                  <p id={`remove-hint-${p.id}`} className="max-w-[11rem] px-1 text-left text-[11px] leading-snug text-neutral-500">
+                    มีประวัติการแข่งแล้ว ลบไม่ได้ ใช้ถอนตัวแทน
+                  </p>
+                </div>
               )}
-            </div>
+            </ActionMenu>
           </td>
         </ExpandablePlayerRow>
       ),

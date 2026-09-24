@@ -132,12 +132,20 @@ export async function removePlayerFromTournament(formData: FormData) {
   });
   await assertTournamentAccess(tp.tournamentId);
 
-  if (tp.tournament.status !== "UPCOMING") {
-    throw new Error("ลบผู้เล่นได้เฉพาะก่อน Tournament เริ่มเท่านั้น ใช้ Withdraw แทน");
+  // Deleting a player who has played would also have to delete those Matches, rewriting their
+  // opponents' results and the standings — so once there's any history, only Withdraw is allowed.
+  const [matchCount, absenceCount] = await Promise.all([
+    prisma.match.count({
+      where: { OR: [{ player1Id: tournamentPlayerId }, { player2Id: tournamentPlayerId }] },
+    }),
+    prisma.roundAbsence.count({ where: { tournamentPlayerId } }),
+  ]);
+  if (matchCount + absenceCount > 0) {
+    throw new Error("ผู้เล่นนี้มีประวัติการแข่งแล้ว ลบไม่ได้ ใช้ถอนตัวแทน");
   }
 
   await prisma.tournamentPlayer.delete({ where: { id: tournamentPlayerId } });
-  await setFlash("ลบผู้เล่นแล้ว");
+  await setFlash("ลบผู้เล่นออกจากการแข่งขันแล้ว");
   revalidatePath(`/admin/tournaments/${tp.tournamentId}/players`);
 }
 
@@ -153,7 +161,7 @@ export async function withdrawPlayer(formData: FormData) {
     where: { id: tournamentPlayerId },
     data: { status: "WITHDRAWN" },
   });
-  await setFlash("Withdraw ผู้เล่นแล้ว");
+  await setFlash("ถอนตัวผู้เล่นแล้ว");
   revalidatePath(`/admin/tournaments/${tp.tournamentId}/players`);
 }
 
