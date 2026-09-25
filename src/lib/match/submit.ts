@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { computeResult } from "@/lib/match/result";
 
 export type SubmitOutcome =
+  | { kind: "not-found" }
   | { kind: "already-bye" }
   | { kind: "already-confirmed" }
   | { kind: "waiting" }
@@ -31,7 +32,9 @@ export async function resolveMatchSubmission(
       SELECT id, "isBye", status, "roundId" FROM "Match" WHERE id = ${matchId} FOR UPDATE
     `;
     const match = locked[0];
-    if (!match) throw new Error("ไม่พบ Match");
+    // Gone since the page was loaded (e.g. the round was re-paired after a no-show) — a stale
+    // page, not a crash; callers show the current state instead.
+    if (!match) return { kind: "not-found" };
     if (match.isBye) return { kind: "already-bye" };
     if (match.status === "CONFIRMED") return { kind: "already-confirmed" };
 

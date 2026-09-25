@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { inputClass, labelClass } from "@/components/ui/styles";
 import { validateWinnerScores, type Winner } from "./scoreEntryValidation";
+import { useConfirmBeforeSubmit } from "./useConfirmBeforeSubmit";
+import { ResultConfirmDialog } from "./ResultConfirmDialog";
+import { ResultSummary } from "./ResultSummary";
 
 // Spec §13 still applies: this is one of up to two independent reports of the SAME match,
 // compared server-side (in submitMatchResult for the table-QR flow, submitSelfServiceResult
@@ -56,25 +59,18 @@ export function ResultForm({
   const [tieScore, setTieScore] = useState(
     prefill && prefill.player1Score === prefill.player2Score ? String(prefill.player1Score) : ""
   );
-  const [error, setError] = useState<string | null>(null);
 
   const player1Score =
     winner === "PLAYER1" ? winnerScore : winner === "PLAYER2" ? loserScore : tieScore;
   const player2Score =
     winner === "PLAYER2" ? winnerScore : winner === "PLAYER1" ? loserScore : tieScore;
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    const message = validateWinnerScores(winner, winnerScore, loserScore, tieScore);
-    if (message) {
-      e.preventDefault();
-      setError(message);
-      return;
-    }
-    setError(null);
-  }
+  const { formId, confirming, error, onSubmit, cancel } = useConfirmBeforeSubmit(() =>
+    validateWinnerScores(winner, winnerScore, loserScore, tieScore)
+  );
 
   return (
-    <Card as="form" action={action} onSubmit={handleSubmit}>
+    <Card as="form" id={formId} action={action} onSubmit={onSubmit}>
       <input type="hidden" name="matchId" value={matchId} />
       {Object.entries(extraHiddenFields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
@@ -121,6 +117,7 @@ export function ResultForm({
           <label className={labelClass}>คะแนน (เท่ากันทั้งคู่)</label>
           <input
             type="number"
+            inputMode="numeric"
             min={0}
             required
             value={tieScore}
@@ -134,6 +131,7 @@ export function ResultForm({
             <label className={labelClass}>คะแนนผู้ชนะ</label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               required
               value={winnerScore}
@@ -145,6 +143,7 @@ export function ResultForm({
             <label className={labelClass}>คะแนนผู้แพ้</label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               required
               value={loserScore}
@@ -160,6 +159,15 @@ export function ResultForm({
       <SubmitButton className="mt-4 w-full">
         {previous ? "แก้ไขผล" : opponentReport ? "ยืนยันผล" : "ส่งผล"}
       </SubmitButton>
+
+      {confirming && (
+        <ResultConfirmDialog formId={formId} onCancel={cancel}>
+          <ResultSummary
+            player1={{ name: player1Name, score: Number(player1Score) }}
+            player2={{ name: player2Name, score: Number(player2Score) }}
+          />
+        </ResultConfirmDialog>
+      )}
     </Card>
   );
 }

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { submitSelfServiceResult } from "@/lib/actions/self-service";
 import { ResultForm } from "@/components/match/ResultForm";
+import { ResultSummary } from "@/components/match/ResultSummary";
 import { NewSelfServiceMatchForm } from "@/components/match/NewSelfServiceMatchForm";
+import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { Card } from "@/components/ui/Card";
 
 // Practice-only self-service scoring: public, no auth, no staff-created Round required at
@@ -81,11 +83,16 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
     const mySubmission = m.submissions.find((s) => s.side === mySide);
     return m.status === "CONFLICT" || !mySubmission;
   });
+  // Games this player already reported that are waiting on the opponent — shown so logging a
+  // game leaves a visible trace instead of only a toast that disappears.
+  const waitingOnThem = pendingMatches.filter((m) => !waitingOnMe.includes(m));
 
   const opponents = activePlayers.filter((p) => p.id !== selfPlayer.id);
 
   return (
     <main className="mx-auto max-w-md px-4 py-10">
+      {/* Picks up the opponent confirming (or disputing) a game without a manual reload. */}
+      {pendingMatches.length > 0 && <AutoRefresh />}
       <p className="text-center text-xs text-neutral-500">{tournament.name}</p>
       <h1 className="mt-1 text-center text-lg font-semibold text-neutral-900">
         สวัสดี {selfPlayer.globalPlayer.name}
@@ -128,6 +135,32 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
                       : `${m.player1.globalPlayer.name} vs ${m.player2!.globalPlayer.name}`
                   }
                 />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {waitingOnThem.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-sm font-medium text-neutral-900">รอคู่แข่งยืนยัน</h2>
+          <div className="mt-2 space-y-3">
+            {waitingOnThem.map((m) => {
+              const mySide = m.player1Id === selfPlayer.id ? "PLAYER1" : "PLAYER2";
+              const mine = m.submissions.find((s) => s.side === mySide)!;
+              const opponentName =
+                mySide === "PLAYER1" ? m.player2!.globalPlayer.name : m.player1.globalPlayer.name;
+              return (
+                <Card key={m.id} padding="p-4">
+                  <ResultSummary
+                    player1={{ name: m.player1.globalPlayer.name, score: mine.player1Score }}
+                    player2={{ name: m.player2!.globalPlayer.name, score: mine.player2Score }}
+                  />
+                  <p className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+                    <span aria-hidden className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-warning" />
+                    รอ {opponentName} ยืนยันผล · ส่งเมื่อ {formatBangkok(mine.submittedAt)}
+                  </p>
+                </Card>
               );
             })}
           </div>

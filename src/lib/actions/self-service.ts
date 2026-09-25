@@ -141,16 +141,35 @@ export async function submitSelfServiceResult(formData: FormData) {
   }
   const { token, matchId, side, player1Score, player2Score } = parsed.data;
 
+  // The link's token only grants this practice tournament's ad-hoc games — never a match from
+  // another tournament, or a staff-run round's match (which has its own table-QR flow).
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    select: { roundId: true, tournament: { select: { selfServiceToken: true, mode: true } } },
+  });
+  if (
+    !match ||
+    match.roundId !== null ||
+    match.tournament.mode !== "PRACTICE" ||
+    match.tournament.selfServiceToken !== token
+  ) {
+    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
+    revalidatePath(`/practice/play/${token}`);
+    return;
+  }
+
   const outcome = await resolveMatchSubmission(matchId, side, player1Score, player2Score);
 
-  if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
+  if (outcome.kind === "not-found") {
+    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
+  } else if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
     await setFlash("ผลถูกยืนยันแล้ว — หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
   } else if (outcome.kind === "waiting") {
     await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
   } else if (outcome.kind === "confirmed") {
     await setFlash("ผลตรงกัน ยืนยันผลแล้ว");
   } else {
-    await setFlash("ผลไม่ตรงกับอีกฝ่าย กรุณาตรวจสอบและส่งผลอีกครั้งทั้งสองฝั่ง", "error");
+    await setFlash("ผลไม่ตรงกับอีกฝ่าย ตรวจสอบกันอีกครั้งแล้วแก้ผลให้ตรงกัน", "error");
   }
 
   revalidatePath(`/practice/play/${token}`);

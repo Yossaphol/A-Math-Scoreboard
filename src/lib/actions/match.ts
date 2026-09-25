@@ -37,6 +37,16 @@ export async function submitMatchResult(formData: FormData) {
   }
   const { matchId, side, player1Score, player2Score, qrToken } = parsed.data;
 
+  // The table's QR token is the only thing that ties a player to a match, so the result has
+  // to be for the match that's on this table right now — not whatever match id a stale page
+  // (round re-paired after a no-show) or a hand-crafted request happens to post.
+  const active = await getActiveMatchForTable(qrToken);
+  if ("error" in active || active.match.id !== matchId) {
+    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
+    revalidatePath(`/table/${qrToken}`);
+    return;
+  }
+
   // Expected, not exceptional: a stale page (the match was already confirmed by the other
   // side, or turned out to be a Bye) still shows an active form. This used to throw, which
   // with no error boundary crashed the whole page ("This page couldn't load") instead of
@@ -44,7 +54,9 @@ export async function submitMatchResult(formData: FormData) {
   // outcome instead.
   const outcome = await resolveMatchSubmission(matchId, side, player1Score, player2Score);
 
-  if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
+  if (outcome.kind === "not-found") {
+    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
+  } else if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
     await setFlash("ผลถูกยืนยันแล้ว — หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
   } else if (outcome.kind === "waiting") {
     await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
@@ -52,7 +64,7 @@ export async function submitMatchResult(formData: FormData) {
     if (outcome.roundId) await maybeCompleteRound(outcome.roundId);
     await setFlash("ผลตรงกัน ยืนยันผลแล้ว");
   } else {
-    await setFlash("ผลไม่ตรงกับอีกฝ่าย รอ Admin/Staff ตรวจสอบ", "error");
+    await setFlash("ผลไม่ตรงกับอีกฝ่าย ตรวจสอบกันอีกครั้ง หรือแจ้ง Admin/Staff", "error");
   }
 
   revalidatePath(`/table/${qrToken}`);

@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { startSelfServiceMatch } from "@/lib/actions/self-service";
 import { validateWinnerScores } from "./scoreEntryValidation";
+import { useConfirmBeforeSubmit } from "./useConfirmBeforeSubmit";
+import { ResultConfirmDialog } from "./ResultConfirmDialog";
+import { ResultSummary } from "./ResultSummary";
 import { Card } from "@/components/ui/Card";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { inputClass, labelClass } from "@/components/ui/styles";
@@ -29,32 +32,25 @@ export function NewSelfServiceMatchForm({
   const [winnerScore, setWinnerScore] = useState("");
   const [loserScore, setLoserScore] = useState("");
   const [tieScore, setTieScore] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
   // "ME" / "OPPONENT" map onto player1/player2 the same way startSelfServiceMatch always
   // stores selfPlayerId as player1Id.
   const player1Score = winner === "ME" ? winnerScore : winner === "OPPONENT" ? loserScore : tieScore;
   const player2Score = winner === "OPPONENT" ? winnerScore : winner === "ME" ? loserScore : tieScore;
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    const message = validateWinnerScores(
+  const { formId, confirming, error, onSubmit, cancel } = useConfirmBeforeSubmit(() =>
+    validateWinnerScores(
       winner === "ME" ? "PLAYER1" : winner === "OPPONENT" ? "PLAYER2" : winner,
       winnerScore,
       loserScore,
       tieScore
-    );
-    if (message) {
-      e.preventDefault();
-      setError(message);
-      return;
-    }
-    setError(null);
-  }
+    )
+  );
 
   const opponentName = opponents.find((o) => o.id === opponentId)?.name ?? "";
 
   return (
-    <Card as="form" action={startSelfServiceMatch} onSubmit={handleSubmit}>
+    <Card as="form" id={formId} action={startSelfServiceMatch} onSubmit={onSubmit}>
       <input type="hidden" name="token" value={token} />
       <input type="hidden" name="selfPlayerId" value={selfPlayerId} />
       <input type="hidden" name="opponentPlayerId" value={opponentId} />
@@ -103,6 +99,7 @@ export function NewSelfServiceMatchForm({
           <label className={labelClass}>คะแนน (เท่ากันทั้งคู่)</label>
           <input
             type="number"
+            inputMode="numeric"
             min={0}
             required
             value={tieScore}
@@ -116,6 +113,7 @@ export function NewSelfServiceMatchForm({
             <label className={labelClass}>คะแนนผู้ชนะ</label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               required
               value={winnerScore}
@@ -127,6 +125,7 @@ export function NewSelfServiceMatchForm({
             <label className={labelClass}>คะแนนผู้แพ้</label>
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               required
               value={loserScore}
@@ -142,6 +141,15 @@ export function NewSelfServiceMatchForm({
       <SubmitButton className="mt-4 w-full" disabled={!opponentId} pendingLabel="กำลังบันทึก...">
         บันทึกผล
       </SubmitButton>
+
+      {confirming && (
+        <ResultConfirmDialog formId={formId} onCancel={cancel}>
+          <ResultSummary
+            player1={{ name: selfName, score: Number(player1Score) }}
+            player2={{ name: opponentName, score: Number(player2Score) }}
+          />
+        </ResultConfirmDialog>
+      )}
     </Card>
   );
 }
