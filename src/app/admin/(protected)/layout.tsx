@@ -1,7 +1,7 @@
 import { requireStaffOrAdmin } from "@/lib/dal";
 import { logoutAction } from "@/lib/actions/auth";
 import { NavLink } from "@/components/ui/NavLink";
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
 const ADMIN_NAV = [
@@ -35,11 +35,16 @@ export default async function AdminProtectedLayout({
               <Badge variant={user.role === "ADMIN" ? "danger" : "info"}>{user.role}</Badge>
             </p>
           </div>
-          <form action={logoutAction} className="shrink-0 md:hidden">
-            <Button type="submit" variant="ghost" size="sm">
-              Logout
-            </Button>
-          </form>
+          <div className="flex shrink-0 items-center gap-1 md:hidden">
+            <LinkButton href="/" variant="ghost" size="sm">
+              ไปหน้า User
+            </LinkButton>
+            <form action={logoutAction}>
+              <Button type="submit" variant="ghost" size="sm">
+                Logout
+              </Button>
+            </form>
+          </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-4 pb-3 md:mt-6 md:flex-1 md:flex-col md:space-y-1 md:overflow-visible md:pb-0">
           {nav.map((item) => (
@@ -48,11 +53,17 @@ export default async function AdminProtectedLayout({
             </NavLink>
           ))}
         </nav>
-        <form action={logoutAction} className="hidden p-4 md:block">
-          <Button type="submit" variant="ghost" size="sm" className="w-full justify-start">
-            Logout
-          </Button>
-        </form>
+        <div className="hidden space-y-1 p-4 md:block">
+          {/* Counterpart of the "ไปหน้า Admin" item in the public site's user menu. */}
+          <LinkButton href="/" variant="ghost" size="sm" className="w-full justify-start">
+            ไปหน้า User →
+          </LinkButton>
+          <form action={logoutAction}>
+            <Button type="submit" variant="ghost" size="sm" className="w-full justify-start">
+              Logout
+            </Button>
+          </form>
+        </div>
       </aside>
       <div className="min-w-0 flex-1 p-4 md:p-8">{children}</div>
     </div>
