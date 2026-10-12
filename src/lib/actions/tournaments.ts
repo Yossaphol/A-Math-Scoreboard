@@ -117,6 +117,64 @@ export async function updateTournamentStatus(formData: FormData) {
   revalidatePath(publicTournamentListPath(tournament.mode));
 }
 
+const updateGeneralSchema = z.object({
+  tournamentId: z.string().min(1),
+  name: z.string().trim().min(2, "ชื่อ Tournament ต้องมีอย่างน้อย 2 ตัวอักษร"),
+  defaultMaximumScore: z.coerce.number().int().positive("คะแนนสูงสุดเริ่มต้นต้องมากกว่า 0"),
+});
+
+// The remaining create-time settings, editable afterwards. None of them rewrites history:
+// First/Second and the default Maximum Score only seed rounds (and self-service games) created
+// from now on — every existing Round/Match keeps the values it was created with. Mode stays
+// fixed: switching it would orphan the Practice-only PIN / self-service link.
+export async function updateTournamentGeneral(formData: FormData) {
+  const parsed = updateGeneralSchema.safeParse({
+    tournamentId: formData.get("tournamentId"),
+    name: formData.get("name"),
+    defaultMaximumScore: formData.get("defaultMaximumScore"),
+  });
+  const tournamentId = String(formData.get("tournamentId") ?? "");
+  const actor = await assertTournamentAccess(tournamentId);
+  if (!parsed.success) {
+    await setFlash(parsed.error.issues.map((i) => i.message).join(", "), "error");
+    revalidatePath(`/admin/tournaments/${tournamentId}/settings`);
+    return;
+  }
+  const { name, defaultMaximumScore } = parsed.data;
+  const useFirstSecond = formData.get("useFirstSecond") === "on";
+
+  const before = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+  const tournament = await prisma.tournament.update({
+    where: { id: tournamentId },
+    data: { name, useFirstSecond, defaultMaximumScore },
+  });
+
+  const changes = [
+    before.name !== name && `ชื่อ "${before.name}" → "${name}"`,
+    before.useFirstSecond !== useFirstSecond && `First/Second ${useFirstSecond ? "เปิด" : "ปิด"}`,
+    before.defaultMaximumScore !== defaultMaximumScore &&
+      `คะแนนสูงสุดเริ่มต้น ${before.defaultMaximumScore ?? "—"} → ${defaultMaximumScore}`,
+  ].filter(Boolean);
+  if (changes.length === 0) {
+    await setFlash("ไม่มีอะไรเปลี่ยน");
+    return;
+  }
+
+  await logAdminAction({
+    actorId: actor.id,
+    action: "tournament.update_general",
+    summary: `แก้ Setting "${tournament.name}": ${changes.join(", ")}`,
+    targetType: "Tournament",
+    targetId: tournament.id,
+  });
+
+  await setFlash("บันทึกแล้ว");
+  revalidatePath(`/admin/tournaments/${tournamentId}`, "layout");
+  revalidatePath("/admin/tournaments");
+  revalidatePath(publicTournamentPath(tournament), "layout");
+  revalidatePath(publicTournamentListPath(tournament.mode));
+}
+
 const updateLimitsSchema = z.object({
   tournamentId: z.string().min(1),
   maxPlayers: z.coerce.number().int().positive().optional(),
