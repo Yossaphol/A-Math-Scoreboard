@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getScoreboard, type ScoreboardRow } from "@/lib/scoreboard";
-import { getFirstSecondCounts } from "@/lib/pairing/first-second";
+import { getFirstSecondScores } from "@/lib/pairing/first-second";
 import { startPairing, confirmPairing, cancelPreview } from "@/lib/actions/pairing";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { Card } from "@/components/ui/Card";
@@ -37,9 +37,9 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
 
   const rows = await getScoreboard(id);
   const statsByPlayer = new Map(rows.map((r) => [r.tournamentPlayerId, r]));
-  const firstSecondCounts = tournament.useFirstSecond
-    ? await getFirstSecondCounts(id)
-    : new Map<string, { first: number; second: number }>();
+  const firstSecondScores = tournament.useFirstSecond
+    ? await getFirstSecondScores(id)
+    : null;
 
   const activePlayers =
     tournament.mode === "PRACTICE"
@@ -85,7 +85,7 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
       {newRoundAction && <div className="mb-4 flex justify-end">{newRoundAction}</div>}
 
       {currentRound && isPreview && (
-        <RoundPreviewSection round={currentRound} statsByPlayer={statsByPlayer} />
+        <RoundPreviewSection round={currentRound} statsByPlayer={statsByPlayer} firstSecondScores={firstSecondScores} />
       )}
 
       {currentRound && !isPreview && (
@@ -110,16 +110,18 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
                 <th className="py-3 pr-3 text-right">คะแนนที่ทำได้</th>
                 <th className="py-3 pr-3 text-right">คะแนนคู่ต่อสู้</th>
                 <th className="py-3 pr-3 text-right">Diff</th>
-                {tournament.useFirstSecond && (
-                  <th className="py-3 pr-5 text-center" title="จำนวนเกมที่ได้เริ่มก่อน / เริ่มหลัง">
-                    First/Second
+                {firstSecondScores && (
+                  <th
+                    className="py-3 pr-5 text-right"
+                    title="เริ่มก่อน +2 · เริ่มหลัง +1 · เกมถัดไปค่าน้อยกว่าได้เริ่มก่อน (เท่ากันสุ่ม)"
+                  >
+                    เริ่มก่อนหลัง
                   </th>
                 )}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
-                const fs = firstSecondCounts.get(r.tournamentPlayerId);
                 return (
                   <tr
                     key={r.tournamentPlayerId}
@@ -150,12 +152,8 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
                     <td className="py-3 pr-3 text-right">
                       {r.cumulativeDiff > 0 ? `+${r.cumulativeDiff}` : r.cumulativeDiff}
                     </td>
-                    {tournament.useFirstSecond && (
-                      <td className="whitespace-nowrap py-3 pr-5 text-center">
-                        {fs?.first ?? 0}
-                        <span className="mx-0.5 text-neutral-300">/</span>
-                        {fs?.second ?? 0}
-                      </td>
+                    {firstSecondScores && (
+                      <td className="py-3 pr-5 text-right">{firstSecondScores.get(r.tournamentPlayerId) ?? 0}</td>
                     )}
                   </tr>
                 );
@@ -268,7 +266,8 @@ function toSlot(
   player: { tournamentPlayerNo: number; globalPlayer: { name: string } },
   isFirst: boolean,
   isSecond: boolean,
-  stats: ScoreboardRow | undefined
+  stats: ScoreboardRow | undefined,
+  firstSecondScores: Map<string, number> | null
 ) {
   return {
     playerId,
@@ -276,6 +275,7 @@ function toSlot(
     name: player.globalPlayer.name,
     isFirst,
     isSecond,
+    firstSecondScore: firstSecondScores ? (firstSecondScores.get(playerId) ?? 0) : null,
     wins: stats?.wins ?? 0,
     ties: stats?.ties ?? 0,
     losses: stats?.losses ?? 0,
@@ -286,9 +286,11 @@ function toSlot(
 function RoundPreviewSection({
   round,
   statsByPlayer,
+  firstSecondScores,
 }: {
   round: PreviewRound;
   statsByPlayer: Map<string, ScoreboardRow>;
+  firstSecondScores: Map<string, number> | null;
 }) {
   const matches: PreviewMatch[] = round.matches.map((m) => ({
     id: m.id,
@@ -298,7 +300,8 @@ function RoundPreviewSection({
       m.player1,
       m.firstPlayerId === m.player1Id,
       m.secondPlayerId === m.player1Id,
-      statsByPlayer.get(m.player1Id)
+      statsByPlayer.get(m.player1Id),
+      firstSecondScores
     ),
     player2: m.player2
       ? toSlot(
@@ -306,7 +309,8 @@ function RoundPreviewSection({
           m.player2,
           m.firstPlayerId === m.player2Id,
           m.secondPlayerId === m.player2Id,
-          statsByPlayer.get(m.player2Id!)
+          statsByPlayer.get(m.player2Id!),
+          firstSecondScores
         )
       : null,
   }));

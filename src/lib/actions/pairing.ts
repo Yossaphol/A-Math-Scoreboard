@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { assertTournamentAccess } from "@/lib/dal";
 import { generatePairing } from "@/lib/pairing/generate";
 import { matchStarted, planAbsenceRepair } from "@/lib/pairing/absence-repair";
-import { getFirstSecondTotals, assignFirstSecond } from "@/lib/pairing/first-second";
+import { getFirstSecondScores, assignFirstSecond } from "@/lib/pairing/first-second";
 import { maybeCompleteRound, healStuckRounds } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
 import { publicTournamentPath, publicTournamentListPath } from "@/lib/tournament-path";
@@ -90,8 +90,8 @@ export async function startPairing(formData: FormData) {
     orderBy: { tableNumber: "asc" },
   });
 
-  const totals = tournament.useFirstSecond
-    ? await getFirstSecondTotals(tournamentId)
+  const firstSecondScores = tournament.useFirstSecond
+    ? await getFirstSecondScores(tournamentId)
     : new Map<string, number>();
 
   let tableCursor = 0;
@@ -101,7 +101,7 @@ export async function startPairing(formData: FormData) {
 
     const firstSecond =
       !isBye && tournament.useFirstSecond
-        ? assignFirstSecond(pair.player1Id, pair.player2Id!, totals)
+        ? assignFirstSecond(pair.player1Id, pair.player2Id!, firstSecondScores)
         : { firstPlayerId: null, secondPlayerId: null };
 
     return {
@@ -197,11 +197,11 @@ export async function swapPreviewPlayers(formData: FormData) {
   });
 
   if (round.tournament.useFirstSecond) {
-    const totals = await getFirstSecondTotals(round.tournamentId);
+    const firstSecondScores = await getFirstSecondScores(round.tournamentId);
     for (const matchId of [matchA.id, matchB.id]) {
       const fresh = await prisma.match.findUniqueOrThrow({ where: { id: matchId } });
       if (fresh.player2Id) {
-        const fs = assignFirstSecond(fresh.player1Id, fresh.player2Id, totals);
+        const fs = assignFirstSecond(fresh.player1Id, fresh.player2Id, firstSecondScores);
         await prisma.match.update({ where: { id: matchId }, data: fs });
       }
     }
@@ -415,15 +415,15 @@ export async function repairRoundForAbsences(formData: FormData) {
     ]),
   ];
 
-  const totals = round.tournament.useFirstSecond
-    ? await getFirstSecondTotals(round.tournamentId)
+  const firstSecondScores = round.tournament.useFirstSecond
+    ? await getFirstSecondScores(round.tournamentId)
     : new Map<string, number>();
   let tableCursor = 0;
   const newMatches = pairs.map((pair) => {
     const isBye = pair.player2Id == null;
     const firstSecond =
       !isBye && round.tournament.useFirstSecond
-        ? assignFirstSecond(pair.player1Id, pair.player2Id!, totals)
+        ? assignFirstSecond(pair.player1Id, pair.player2Id!, firstSecondScores)
         : { firstPlayerId: null, secondPlayerId: null };
     return {
       roundId: round.id,

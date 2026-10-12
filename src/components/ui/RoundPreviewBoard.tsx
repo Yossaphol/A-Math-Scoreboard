@@ -11,6 +11,9 @@ export type PreviewSlot = {
   name: string;
   isFirst: boolean;
   isSecond: boolean;
+  // The "เริ่มก่อนหลัง" score FIRST/SECOND was decided on (lower starts first); null when the
+  // Tournament doesn't use First/Second.
+  firstSecondScore: number | null;
   wins: number;
   ties: number;
   losses: number;
@@ -169,6 +172,11 @@ function PlayerCard({
       <div className="mt-0.5 flex flex-wrap items-center gap-1">
         {slot.isFirst && <Badge variant="accent">FIRST</Badge>}
         {slot.isSecond && <Badge variant="neutral">SECOND</Badge>}
+        {slot.firstSecondScore != null && (
+          <span className="text-[11px] text-neutral-500" title="เริ่มก่อน +2 · เริ่มหลัง +1 · ค่าน้อยกว่าได้เริ่มก่อน">
+            เริ่มก่อนหลัง {slot.firstSecondScore}
+          </span>
+        )}
       </div>
       <p className="mt-0.5 truncate text-[11px] text-neutral-400">
         W {slot.wins} · T {slot.ties} · L {slot.losses} · Diff{" "}
