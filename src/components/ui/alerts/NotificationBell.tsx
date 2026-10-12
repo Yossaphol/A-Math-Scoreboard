@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertIconTile } from "./AlertIcon";
 import { clearNotifications, markNotificationsRead, useAlertState } from "./store";
+import { setRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
+import { Switch } from "@/components/ui/Switch";
 
 const timeFormat = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short" });
@@ -28,6 +30,7 @@ export function NotificationBell({
   align?: "left" | "right";
 }) {
   const { history, lastReadAt } = useAlertState();
+  const refereeSoundMuted = useRefereeSoundMuted();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const unread = history.filter((h) => h.createdAt > lastReadAt).length;
@@ -94,6 +97,16 @@ export function NotificationBell({
                   ล้างทั้งหมด
                 </button>
               )}
+            </div>
+            <div className="border-b border-neutral-200/70 px-4 py-3">
+              <Switch
+                label="เสียงเรียกกรรมการ"
+                checked={!refereeSoundMuted}
+                onChange={(on) => setRefereeSoundMuted(!on)}
+              />
+              <p className="mt-1 text-[11px] text-neutral-400">
+                {refereeSoundMuted ? "ปิดเสียงไว้ — ยังมี popup แจ้งเตือนเหมือนเดิม" : "ดังจนกว่าจะกดรับเรื่องหรือปิด"} · เฉพาะเครื่องนี้
+              </p>
             </div>
             {history.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-neutral-400">ยังไม่มีการแจ้งเตือน</p>

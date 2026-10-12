@@ -7,6 +7,7 @@ import { acknowledgeRefereeCall, resolveRefereeCall } from "@/lib/actions/refere
 import { Button } from "@/components/ui/Button";
 import { dismissAlertsWhere, showAlert } from "./store";
 import { isAudioUnlocked, playAlertChime, subscribeAudioState, unlockAudio } from "./sound";
+import { isRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
 
 // Keeps ringing (one ~1s chime, then a short gap) for as long as any call on this screen is
 // still OPEN — it stops once a referee taps "รับเรื่อง" or closes the card with ✕.
@@ -51,7 +52,7 @@ export function RefereeCallAlerts() {
           title: `เรียกกรรมการ · โต๊ะ ${call.tableNumber}`,
           description: describe(call),
           duration: null,
-          sound: call.status === "OPEN",
+          sound: call.status === "OPEN" && !isRefereeSoundMuted(),
           attention: call.status === "OPEN",
           actions: <CallActions call={call} />,
           onClose: () => closedByHand.current.add(call.id),
@@ -95,7 +96,7 @@ export function RefereeCallAlerts() {
 
     const ringer = setInterval(() => {
       const unanswered = openCalls.current.some((c) => c.status === "OPEN" && !closedByHand.current.has(c.id));
-      if (unanswered) playAlertChime();
+      if (unanswered && !isRefereeSoundMuted()) playAlertChime();
     }, RING_EVERY_MS);
 
     return () => {
@@ -153,7 +154,8 @@ function CallActions({ call }: { call: RefereeCallView }) {
 // admin screen and put the phone down would otherwise miss the chime entirely.
 function SoundUnlockHint() {
   const unlocked = useSyncExternalStore(subscribeAudioState, isAudioUnlocked, () => true);
-  if (unlocked) return null;
+  const muted = useRefereeSoundMuted();
+  if (unlocked || muted) return null;
   return (
     <button
       type="button"

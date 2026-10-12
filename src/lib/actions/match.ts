@@ -110,6 +110,8 @@ export async function adminSetMatchResult(formData: FormData) {
     where: { id: matchId },
     include: {
       tournament: { select: { mode: true } },
+      round: { select: { roundNumber: true } },
+      table: { select: { tableNumber: true } },
       player1: { include: { globalPlayer: true } },
       player2: { include: { globalPlayer: true } },
     },
@@ -152,6 +154,18 @@ export async function adminSetMatchResult(formData: FormData) {
     targetId: match.id,
   });
 
+  // Says which game was saved — a round page lists every table, so "saved" alone isn't enough.
+  const where = [
+    match.round ? `Round ${match.round.roundNumber}` : "เกมฝึกซ้อม",
+    match.table ? `Table ${match.table.tableNumber}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  await setFlash({
+    type: "success",
+    title: "บันทึกผลแล้ว",
+    description: `${where} · ${match.player1.globalPlayer.name} ${player1Score} – ${player2Score} ${match.player2?.globalPlayer.name ?? ""}`.trim(),
+  });
   revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);
   revalidatePath(publicTournamentPath({ id: match.tournamentId, mode: match.tournament.mode }));
 }
