@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 import { FlashToastHost } from "@/components/ui/FlashToastHost";
+import { AlertViewport } from "@/components/ui/alerts/AlertViewport";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         {children}
+        <AlertViewport />
         <Suspense fallback={null}>
           <FlashToastHost />
         </Suspense>

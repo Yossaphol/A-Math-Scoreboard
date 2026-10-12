@@ -3,6 +3,8 @@ import { logoutAction } from "@/lib/actions/auth";
 import { NavLink } from "@/components/ui/NavLink";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { NotificationBell } from "@/components/ui/alerts/NotificationBell";
+import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
 
 const ADMIN_NAV = [
   { href: "/admin", label: "Dashboard" },
@@ -26,8 +28,10 @@ export default async function AdminProtectedLayout({
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <aside className="flex shrink-0 flex-col border-b border-neutral-200/70 bg-white/70 backdrop-blur-md md:sticky md:top-0 md:h-screen md:w-60 md:border-b-0 md:border-r">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 md:block md:pb-0 md:pt-4">
+      {/* z-30: the sidebar is its own stacking layer (sticky + backdrop blur), so without it the
+          page content paints over the notification panel that opens out of it. */}
+      <aside className="relative z-30 flex shrink-0 flex-col border-b border-neutral-200/70 bg-white/70 backdrop-blur-md md:sticky md:top-0 md:h-screen md:w-60 md:border-b-0 md:border-r">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 md:pb-0 md:pt-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-neutral-900">Score A-Math</p>
             <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-neutral-500">
@@ -35,7 +39,9 @@ export default async function AdminProtectedLayout({
               <Badge variant={user.role === "ADMIN" ? "danger" : "info"}>{user.role}</Badge>
             </p>
           </div>
+          <NotificationBell className="hidden shrink-0 md:block" align="left" />
           <div className="flex shrink-0 items-center gap-1 md:hidden">
+            <NotificationBell />
             <LinkButton href="/" variant="ghost" size="sm">
               ไปหน้า User
             </LinkButton>
@@ -66,6 +72,7 @@ export default async function AdminProtectedLayout({
         </div>
       </aside>
       <div className="min-w-0 flex-1 p-4 md:p-8">{children}</div>
+      <RefereeCallAlerts />
     </div>
   );
 }

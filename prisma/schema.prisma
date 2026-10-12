@@ -88,6 +88,7 @@ model User {
   linkRequestsHandled LinkRequest[]     @relation("LinkRequestReviewer")
   editedMatches       Match[]           @relation("MatchEditedByAdmin")
   auditLogs           AuditLog[]
+  refereeCallsHandled RefereeCall[]
 }
 
 // Global Player ID — stable identity for a player across every tournament (spec §1).
@@ -157,12 +158,13 @@ model Tournament {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  staff   TournamentStaff[]
-  players TournamentPlayer[]
-  rounds  Round[]
-  tables  TournamentTable[]
-  matches Match[]
-  absences RoundAbsence[]
+  staff        TournamentStaff[]
+  players      TournamentPlayer[]
+  rounds       Round[]
+  tables       TournamentTable[]
+  matches      Match[]
+  absences     RoundAbsence[]
+  refereeCalls RefereeCall[]
 
   @@index([status])
 }
@@ -192,8 +194,8 @@ model TournamentPlayer {
   status             PlayerStatus @default(ACTIVE)
   createdAt          DateTime     @default(now())
 
-  matchesAsPlayer1 Match[] @relation("MatchPlayer1")
-  matchesAsPlayer2 Match[] @relation("MatchPlayer2")
+  matchesAsPlayer1 Match[]        @relation("MatchPlayer1")
+  matchesAsPlayer2 Match[]        @relation("MatchPlayer2")
   absences         RoundAbsence[]
 
   // W/T/L, cumulative score/diff and First/Second totals are ALWAYS derived from confirmed
@@ -255,7 +257,8 @@ model TournamentTable {
   qrToken      String     @unique @default(cuid())
   createdAt    DateTime   @default(now())
 
-  matches Match[]
+  matches      Match[]
+  refereeCalls RefereeCall[]
 
   @@unique([tournamentId, tableNumber])
 }
@@ -297,7 +300,8 @@ model Match {
 
   // Each side independently reports the full result (spec §13) — compared in submissions
   // below, never taken from a single side alone.
-  submissions MatchSubmission[]
+  submissions  MatchSubmission[]
+  refereeCalls RefereeCall[]
 
   // Final, agreed-upon (or admin-resolved) values used for all downstream calculations.
   finalPlayer1Score Int?
@@ -365,4 +369,34 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([actorId])
+}
+
+enum RefereeCallStatus {
+  OPEN // waiting for a referee to pick it up
+  ACKNOWLEDGED // a referee is on the way
+  RESOLVED // the referee handled it
+  CANCELLED // withdrawn from the table before anyone came
+}
+
+// "Call a referee" from a table's QR page. Public like the rest of /table (no login at the
+// table), so there's at most one OPEN/ACKNOWLEDGED call per table at a time — repeat taps
+// don't pile up. Admin/Staff screens stream the open ones (src/app/api/referee-calls/stream).
+model RefereeCall {
+  id             String            @id @default(cuid())
+  tournamentId   String
+  tournament     Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tableId        String
+  table          TournamentTable   @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  // The match on the table when the call was made (or the one it just finished), for context.
+  matchId        String?
+  match          Match?            @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  status         RefereeCallStatus @default(OPEN)
+  handledById    String?
+  handledBy      User?             @relation(fields: [handledById], references: [id])
+  createdAt      DateTime          @default(now())
+  acknowledgedAt DateTime?
+  closedAt       DateTime?
+
+  @@index([status, tournamentId])
+  @@index([tableId, status])
 }

@@ -83,7 +83,12 @@ export async function startSelfServiceMatch(formData: FormData) {
     // confirm that match rather than opening a second copy that nobody would ever confirm.
     if (!mine && theirs && sameAs(theirs)) {
       await resolveMatchSubmission(m.id, selfSide, p1, p2);
-      await setFlash("ผลตรงกับที่คู่แข่งส่งไว้ ยืนยันผลแล้ว");
+      await setFlash({
+        type: "success",
+        title: "ยืนยันผลแล้ว",
+        description: "ผลตรงกับที่คู่แข่งส่งไว้",
+        key: `match-${m.id}`,
+      });
       revalidatePath(`/practice/play/${token}`);
       return;
     }
@@ -91,7 +96,6 @@ export async function startSelfServiceMatch(formData: FormData) {
     // Same result re-sent moments after the first one (double tap, retry on a slow network) —
     // a real game takes far longer than this window, so it's a duplicate, not a new game.
     if (mine && !theirs && sameAs(mine) && Date.now() - m.createdAt.getTime() < 2 * 60 * 1000) {
-      await setFlash("ส่งผลนี้ไปแล้ว รอคู่แข่งกรอกผลเพื่อยืนยัน");
       revalidatePath(`/practice/play/${token}`);
       return;
     }
@@ -113,7 +117,6 @@ export async function startSelfServiceMatch(formData: FormData) {
 
   await resolveMatchSubmission(match.id, "PLAYER1", player1Score, player2Score);
 
-  await setFlash("ส่งผลแล้ว รอคู่แข่งกรอกผลเพื่อยืนยัน");
   revalidatePath(`/practice/play/${token}`);
 }
 
@@ -153,23 +156,27 @@ export async function submitSelfServiceResult(formData: FormData) {
     match.tournament.mode !== "PRACTICE" ||
     match.tournament.selfServiceToken !== token
   ) {
-    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
     revalidatePath(`/practice/play/${token}`);
     return;
   }
 
   const outcome = await resolveMatchSubmission(matchId, side, player1Score, player2Score);
 
-  if (outcome.kind === "not-found") {
-    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
-  } else if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
-    await setFlash("ผลถูกยืนยันแล้ว — หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
-  } else if (outcome.kind === "waiting") {
-    await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
-  } else if (outcome.kind === "confirmed") {
-    await setFlash("ผลตรงกัน ยืนยันผลแล้ว");
-  } else {
-    await setFlash("ผลไม่ตรงกับอีกฝ่าย ตรวจสอบกันอีกครั้งแล้วแก้ผลให้ตรงกัน", "error");
+  // Stale-page outcomes and "waiting" need no alert — the re-rendered page shows the state.
+  if (outcome.kind === "confirmed") {
+    await setFlash({
+      type: "success",
+      title: "ยืนยันผลแล้ว",
+      description: "ผลตรงกับที่คู่แข่งส่งไว้",
+      key: `match-${matchId}`,
+    });
+  } else if (outcome.kind === "conflict") {
+    await setFlash({
+      type: "warning",
+      title: "ผลไม่ตรงกัน",
+      key: `match-${matchId}`,
+      description: "ตรวจสอบกับคู่แข่งอีกครั้ง แล้วแก้ผลที่ผิดให้ตรงกัน",
+    });
   }
 
   revalidatePath(`/practice/play/${token}`);

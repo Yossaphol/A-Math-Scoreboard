@@ -4,7 +4,6 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertSuperAdmin } from "@/lib/dal";
-import { setFlash } from "@/lib/flash";
 import { logAdminAction } from "@/lib/audit-log";
 
 const addAdminSchema = z.object({ email: z.email("อีเมลไม่ถูกต้อง") });
@@ -31,7 +30,6 @@ export async function addAdmin(formData: FormData) {
     targetId: target.id,
   });
 
-  await setFlash(`เพิ่ม ${parsed.data.email} เป็น Admin แล้ว`);
   revalidatePath("/admin/admins");
 }
 
@@ -58,6 +56,5 @@ export async function removeAdmin(formData: FormData) {
     targetId: target.id,
   });
 
-  await setFlash("ถอดสิทธิ์ Admin แล้ว");
   revalidatePath("/admin/admins");
 }

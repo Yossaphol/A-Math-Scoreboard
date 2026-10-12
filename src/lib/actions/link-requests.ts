@@ -33,7 +33,7 @@ export async function requestPlayerLink(formData: FormData) {
     data: { userId: session.user.id, globalPlayerId, status: "PENDING" },
   });
 
-  await setFlash("ส่งคำขอผูกบัญชีแล้ว รอ Admin ตรวจสอบ");
+  await setFlash({ type: "info", title: "ส่งคำขอผูกบัญชีแล้ว", description: "รอ Admin ตรวจสอบ" });
   revalidatePath("/account");
 }
 
@@ -62,7 +62,6 @@ export async function updateOwnPlayerName(formData: FormData) {
     data: { name: parsed.data.name, nickname: parsed.data.nickname || null },
   });
 
-  await setFlash("แก้ไขชื่อแล้ว");
   revalidatePath("/account");
 }
 
@@ -70,7 +69,10 @@ export async function approveLinkRequest(formData: FormData) {
   const admin = await assertAdmin();
   const requestId = String(formData.get("requestId"));
 
-  const request = await prisma.linkRequest.findUniqueOrThrow({ where: { id: requestId } });
+  const request = await prisma.linkRequest.findUniqueOrThrow({
+    where: { id: requestId },
+    include: { globalPlayer: { select: { name: true } } },
+  });
   if (request.status !== "PENDING") throw new Error("คำขอนี้ถูกตรวจสอบไปแล้ว");
 
   const conflict = await prisma.globalPlayer.findUnique({
@@ -91,7 +93,11 @@ export async function approveLinkRequest(formData: FormData) {
     }),
   ]);
 
-  await setFlash("อนุมัติคำขอผูกบัญชีแล้ว");
+  await setFlash({
+    type: "success",
+    title: "อนุมัติคำขอผูกบัญชีแล้ว",
+    description: `ผูกบัญชีกับผู้เล่น ${request.globalPlayer.name} เรียบร้อย`,
+  });
   revalidatePath("/admin/account-requests");
 }
 
@@ -107,6 +113,5 @@ export async function rejectLinkRequest(formData: FormData) {
     data: { status: "REJECTED", reviewedById: admin.id, reviewedAt: new Date() },
   });
 
-  await setFlash("ปฏิเสธคำขอผูกบัญชีแล้ว");
   revalidatePath("/admin/account-requests");
 }

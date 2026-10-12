@@ -2,9 +2,11 @@ import Link from "next/link";
 import { getSession } from "@/lib/dal";
 import { LinkButton } from "@/components/ui/Button";
 import { UserMenu } from "@/components/account/UserMenu";
+import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
+  const isStaffOrAdmin = session?.user.role === "ADMIN" || session?.user.role === "STAFF";
 
   return (
     <div className="min-h-screen">
@@ -14,10 +16,7 @@ export default async function PublicLayout({ children }: { children: React.React
             Score A-Math
           </Link>
           {session?.user ? (
-            <UserMenu
-              name={session.user.name || session.user.email || "User"}
-              isStaffOrAdmin={session.user.role === "ADMIN" || session.user.role === "STAFF"}
-            />
+            <UserMenu name={session.user.name || session.user.email || "User"} isStaffOrAdmin={isStaffOrAdmin} />
           ) : (
             <LinkButton href="/login?callbackUrl=/account" variant="secondary" size="sm">
               Login
@@ -26,6 +25,7 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
       </header>
       {children}
+      {isStaffOrAdmin && <RefereeCallAlerts />}
     </div>
   );
 }

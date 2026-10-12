@@ -4,7 +4,6 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertAdmin } from "@/lib/dal";
-import { setFlash } from "@/lib/flash";
 import { logAdminAction } from "@/lib/audit-log";
 
 const assignSchema = z.object({
@@ -51,7 +50,6 @@ export async function assignStaff(formData: FormData) {
     targetId: tournamentId,
   });
 
-  await setFlash(`เพิ่ม ${email} เป็น Staff แล้ว`);
   revalidatePath(`/admin/tournaments/${tournamentId}/staff`);
   revalidatePath("/admin/staff");
 }
@@ -74,7 +72,6 @@ export async function revokeStaff(formData: FormData) {
     targetId: assignment.tournamentId,
   });
 
-  await setFlash("ถอด Staff แล้ว");
   revalidatePath(`/admin/tournaments/${assignment.tournamentId}/staff`);
   revalidatePath("/admin/staff");
 }

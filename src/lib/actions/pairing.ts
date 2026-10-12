@@ -63,7 +63,11 @@ export async function startPairing(formData: FormData) {
   // Tournament is finished (maybeCompleteRound marks it COMPLETED), so no round past it.
   const roundLimit = roundLimitOf(tournament);
   if (roundLimit != null && roundNumber > roundLimit) {
-    await setFlash(`แข่งครบ ${roundLimit} รอบตามที่กำหนดไว้แล้ว เปิด Round ใหม่ไม่ได้`, "error");
+    await setFlash({
+      type: "error",
+      title: "เปิด Round ใหม่ไม่ได้",
+      description: `แข่งครบ ${roundLimit} รอบตามที่กำหนดไว้แล้ว`,
+    });
     revalidatePath(`/admin/tournaments/${tournamentId}`);
     return;
   }
@@ -134,7 +138,6 @@ export async function startPairing(formData: FormData) {
     });
   });
 
-  await setFlash(`สร้าง Pairing Round ${roundNumber} แล้ว — ตรวจสอบก่อน Confirm`);
   revalidatePath(`/admin/tournaments/${tournamentId}`);
   revalidatePath(`/admin/tournaments/${tournamentId}/rounds`);
 }
@@ -243,7 +246,6 @@ export async function confirmPairing(formData: FormData) {
 
   await maybeCompleteRound(roundId);
 
-  await setFlash(`Confirm Round ${round.roundNumber} แล้ว`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}`, "layout");
   revalidatePath("/admin/tournaments");
   revalidatePath(publicTournamentPath({ id: round.tournamentId, mode: round.tournament.mode }), "layout");
@@ -259,7 +261,6 @@ export async function cancelPreview(formData: FormData) {
   }
 
   await prisma.round.delete({ where: { id: roundId } });
-  await setFlash("ยกเลิก Pairing Preview แล้ว");
   revalidatePath(`/admin/tournaments/${round.tournamentId}`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
 }
@@ -310,11 +311,6 @@ export async function deleteRound(formData: FormData) {
     targetId: round.id,
   });
 
-  await setFlash(
-    reopened
-      ? `ลบ Round ${round.roundNumber} แล้ว — เปิด Tournament กลับเป็นกำลังแข่งขัน`
-      : `ลบ Round ${round.roundNumber} แล้ว`
-  );
   revalidatePath(`/admin/tournaments/${round.tournamentId}`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
   revalidatePath(publicTournamentPath({ id: round.tournamentId, mode: round.tournament.mode }));
@@ -379,7 +375,6 @@ export async function repairRoundForAbsences(formData: FormData) {
     previouslyAbsent.size === absentIds.size && [...absentIds].every((id) => previouslyAbsent.has(id));
   // Same list as last time — everything around it was already re-paired then.
   if (absencesUnchanged) {
-    await setFlash("ไม่มีอะไรเปลี่ยน");
     return;
   }
 
@@ -482,10 +477,6 @@ export async function repairRoundForAbsences(formData: FormData) {
     targetId: round.id,
   });
 
-  const byeCount = pairs.filter((p) => !p.player2Id).length;
-  await setFlash(
-    `จัดคู่ใหม่แล้ว — ไม่มา ${absentIds.size} คน, จับคู่ใหม่ ${pairs.length - byeCount} คู่${byeCount ? `, Bye ${byeCount} คน` : ""}`
-  );
   revalidatePath(`/admin/tournaments/${round.tournamentId}`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds/${round.id}`);

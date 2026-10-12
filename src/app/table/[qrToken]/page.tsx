@@ -9,13 +9,15 @@ import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { Card } from "@/components/ui/Card";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { RefereeCallBar, getOpenRefereeCall } from "@/components/match/RefereeCallBar";
 
 const RESULT_LABEL: Record<string, string> = { WIN: "ชนะ", TIE: "เสมอ", LOSS: "แพ้" };
 
 export default async function TableMatchPage(props: PageProps<"/table/[qrToken]">) {
   const { qrToken } = await props.params;
   const { side: sideParam } = await props.searchParams;
-  const result = await getActiveMatchForTable(qrToken);
+  const [result, refereeCall] = await Promise.all([getActiveMatchForTable(qrToken), getOpenRefereeCall(qrToken)]);
+  const refereeBar = <RefereeCallBar qrToken={qrToken} call={refereeCall} />;
 
   if ("error" in result) {
     // Confirming the last open match of a round completes the round right away — keep
@@ -32,6 +34,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               ? "การแข่งขันจบแล้ว"
               : `รอบที่ ${finished.round.roundNumber} จบแล้ว — รอ Admin/Staff จับคู่รอบถัดไป`
           }
+          bottomBar={refereeBar}
         />
       );
     }
@@ -48,7 +51,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
 
   if (match.isBye) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">
+      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 pb-24">
         <Card className="text-center">
           <p className="text-xs text-neutral-500">
             {tournament.name} · Table {table.tableNumber}
@@ -56,6 +59,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
           <p className="mt-4 text-sm font-medium">โต๊ะนี้ไม่มีคู่แข่งขันในรอบนี้ (Bye)</p>
           <p className="mt-1 text-xs text-neutral-400">รอบที่ {round.roundNumber}</p>
         </Card>
+        {refereeBar}
       </main>
     );
   }
@@ -67,6 +71,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
         match={match}
         player2={match.player2!}
         footer={`รอบที่ ${round.roundNumber}`}
+        bottomBar={refereeBar}
       />
     );
   }
@@ -86,10 +91,11 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
   // Only while this page is waiting on someone else: the other side's report, a conflict
   // being sorted out, or Staff deciding on a no-show claim.
   const waitingOnOthers = match.status === "CONFLICT" || !!claimantName || !!mySubmission;
+  // The referee bar refreshes faster on its own while a call is open — no need for both.
 
   return (
-    <main className="mx-auto max-w-md px-4 py-10">
-      {waitingOnOthers && <AutoRefresh />}
+    <main className="mx-auto max-w-md px-4 pb-28 pt-10">
+      {waitingOnOthers && !refereeCall && <AutoRefresh />}
       <p className="text-center text-xs text-neutral-500">
         {tournament.name} · Table {table.tableNumber}
       </p>
@@ -117,7 +123,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
       {match.status === "CONFLICT" && (
         <Card className="mt-4 !bg-red-50/80 border-red-200 text-center">
           <p className="text-sm text-danger">
-            ผลที่สองฝ่ายส่งมาไม่ตรงกัน ตรวจสอบกันอีกครั้งแล้วแก้ผลที่ผิดให้ตรงกัน หรือแจ้ง Admin/Staff
+            ผลที่สองฝ่ายส่งมาไม่ตรงกัน ตรวจสอบกันอีกครั้งแล้วแก้ผลที่ผิดให้ตรงกัน หรือกด “เรียกกรรมการ” ด้านล่าง
           </p>
         </Card>
       )}
@@ -220,6 +226,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
           </>
         )}
       </div>
+      {refereeBar}
     </main>
   );
 }
@@ -229,6 +236,7 @@ function ConfirmedResult({
   match,
   player2,
   footer,
+  bottomBar,
 }: {
   heading: string;
   match: {
@@ -240,9 +248,10 @@ function ConfirmedResult({
   };
   player2: { globalPlayer: { name: string } };
   footer: string;
+  bottomBar: React.ReactNode;
 }) {
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 pb-24">
       <Card className="text-center">
         <p className="text-xs text-neutral-500">{heading}</p>
         <p className="mt-2 text-sm font-medium text-success">ผลการแข่งขันยืนยันแล้ว</p>
@@ -257,6 +266,7 @@ function ConfirmedResult({
         </div>
         <p className="mt-4 text-xs text-neutral-400">{footer}</p>
       </Card>
+      {bottomBar}
     </main>
   );
 }

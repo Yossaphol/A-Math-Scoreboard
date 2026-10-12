@@ -42,7 +42,6 @@ export async function submitMatchResult(formData: FormData) {
   // (round re-paired after a no-show) or a hand-crafted request happens to post.
   const active = await getActiveMatchForTable(qrToken);
   if ("error" in active || active.match.id !== matchId) {
-    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
     revalidatePath(`/table/${qrToken}`);
     return;
   }
@@ -54,17 +53,35 @@ export async function submitMatchResult(formData: FormData) {
   // outcome instead.
   const outcome = await resolveMatchSubmission(matchId, side, player1Score, player2Score);
 
-  if (outcome.kind === "not-found") {
-    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
-  } else if (outcome.kind === "already-confirmed" || outcome.kind === "already-bye") {
-    await setFlash("ผลถูกยืนยันแล้ว — หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
-  } else if (outcome.kind === "waiting") {
-    await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
-  } else if (outcome.kind === "confirmed") {
+  // Stale-page outcomes (not-found / already decided) and "waiting" need no alert — the
+  // page re-renders into the current state, which already says what's going on.
+  if (outcome.kind === "confirmed") {
     if (outcome.tournamentCompleted) revalidateTournamentStatus(outcome.tournamentCompleted);
-    await setFlash("ผลตรงกัน ยืนยันผลแล้ว");
-  } else {
-    await setFlash("ผลไม่ตรงกับอีกฝ่าย ตรวจสอบกันอีกครั้ง หรือแจ้ง Admin/Staff", "error");
+    // A tie is rare enough in A-Math that a referee checks it at the table before anyone
+    // moves on — hence the chime on top of the warning.
+    await setFlash(
+      player1Score === player2Score
+        ? {
+            type: "warning",
+            title: "ผลเสมอ — เรียกกรรมการมาตรวจ",
+            key: `match-${matchId}`,
+            description: "กดปุ่ม “เรียกกรรมการ” ด้านล่าง แล้วรอกรรมการที่โต๊ะ",
+            sound: true,
+          }
+        : {
+            type: "success",
+            title: "ยืนยันผลแล้ว",
+            description: "ผลตรงกับที่คู่แข่งส่งไว้",
+            key: `match-${matchId}`,
+          }
+    );
+  } else if (outcome.kind === "conflict") {
+    await setFlash({
+      type: "warning",
+      title: "ผลไม่ตรงกัน",
+      key: `match-${matchId}`,
+      description: "ตรวจสอบกับคู่แข่งอีกครั้ง แล้วแก้ผลที่ผิดให้ตรงกัน หรือกด “เรียกกรรมการ”",
+    });
   }
 
   revalidatePath(`/table/${qrToken}`);
@@ -135,7 +152,6 @@ export async function adminSetMatchResult(formData: FormData) {
     targetId: match.id,
   });
 
-  await setFlash("บันทึกผลแล้ว");
   revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);
   revalidatePath(publicTournamentPath({ id: match.tournamentId, mode: match.tournament.mode }));
 }
@@ -170,9 +186,7 @@ export async function claimLateBye(formData: FormData) {
   const { matchId, qrToken, side } = parsed.data;
 
   const m = await openTableMatch(qrToken, matchId);
-  if (!m) {
-    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
-  } else {
+  if (m) {
     await prisma.match.update({
       where: { id: matchId },
       data: {
@@ -180,7 +194,7 @@ export async function claimLateBye(formData: FormData) {
         byeClaimedAt: new Date(),
       },
     });
-    await setFlash("แจ้งแล้ว รอ Admin/Staff ยืนยันและจัดคู่ใหม่");
+    await setFlash({ type: "info", title: "แจ้งแล้ว", description: "รอ Admin/Staff ยืนยันและจัดคู่ใหม่" });
     if (m.roundId) revalidatePath(`/admin/tournaments/${m.tournamentId}/rounds/${m.roundId}`);
   }
   revalidatePath(`/table/${qrToken}`);
@@ -196,14 +210,11 @@ export async function cancelLateByeClaim(formData: FormData) {
   const { matchId, qrToken } = parsed.data;
 
   const m = await openTableMatch(qrToken, matchId);
-  if (!m) {
-    await setFlash("หน้านี้เป็นข้อมูลเก่า กำลังแสดงผลล่าสุดให้", "error");
-  } else {
+  if (m) {
     await prisma.match.update({
       where: { id: matchId },
       data: { byeClaimedById: null, byeClaimedAt: null },
     });
-    await setFlash("ยกเลิกคำแจ้งแล้ว");
     if (m.roundId) revalidatePath(`/admin/tournaments/${m.tournamentId}/rounds/${m.roundId}`);
   }
   revalidatePath(`/table/${qrToken}`);
@@ -219,6 +230,5 @@ export async function adminRejectByeClaim(formData: FormData) {
     where: { id: matchId },
     data: { byeClaimedById: null, byeClaimedAt: null },
   });
-  await setFlash("ปฏิเสธคำขอ Bye แล้ว");
   if (match.roundId) revalidatePath(`/admin/tournaments/${match.tournamentId}/rounds/${match.roundId}`);
 }

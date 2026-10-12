@@ -4,7 +4,6 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertAdmin } from "@/lib/dal";
-import { setFlash } from "@/lib/flash";
 import { generateGlobalPlayerId } from "@/lib/global-player-id";
 import { publicTournamentPath } from "@/lib/tournament-path";
 import { logAdminAction } from "@/lib/audit-log";
@@ -32,7 +31,6 @@ export async function createGlobalPlayer(formData: FormData) {
     });
   });
 
-  await setFlash("เพิ่มผู้เล่นแล้ว");
   revalidatePath("/admin/players");
 }
 
@@ -56,7 +54,6 @@ export async function renameGlobalPlayer(formData: FormData) {
     data: { name: parsed.data.name, nickname: parsed.data.nickname || null },
   });
 
-  await setFlash("แก้ไขชื่อผู้เล่นแล้ว");
   revalidatePath("/admin/players");
 }
 
@@ -85,7 +82,6 @@ export async function unlinkGlobalPlayerAccount(formData: FormData) {
     targetId: String(player.id),
   });
 
-  await setFlash("ยกเลิกการผูกบัญชี Google แล้ว");
   revalidatePath("/admin/players");
 }
 
@@ -127,7 +123,6 @@ export async function deleteGlobalPlayerAccount(formData: FormData) {
     targetId: String(player.id),
   });
 
-  await setFlash("ลบบัญชีผู้เล่นแล้ว");
   revalidatePath("/admin/players");
 }
 
@@ -162,7 +157,6 @@ export async function deleteGlobalPlayer(formData: FormData) {
     targetId: String(player.id),
   });
 
-  await setFlash("ลบผู้เล่นแล้ว");
   revalidatePath("/admin/players");
 }
 
@@ -210,7 +204,6 @@ export async function forceDeleteGlobalPlayer(formData: FormData) {
     targetId: String(player.id),
   });
 
-  await setFlash("ลบผู้เล่นแล้ว (รวมประวัติการแข่งขันทั้งหมด)");
   revalidatePath("/admin/players");
   for (const t of tournamentModes) {
     revalidatePath(`/admin/tournaments/${t.id}`);
@@ -271,7 +264,6 @@ export async function bulkDeleteGlobalPlayers(formData: FormData) {
     where: { id: { in: tournamentIds } },
     select: { id: true, mode: true },
   });
-  await setFlash(`ลบผู้เล่นแล้ว ${players.length} คน`);
   revalidatePath("/admin/players");
   for (const t of tournamentModes) {
     revalidatePath(`/admin/tournaments/${t.id}`);

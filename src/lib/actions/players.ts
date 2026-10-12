@@ -127,7 +127,6 @@ export async function addPlayerToTournament(formData: FormData): Promise<{ error
   });
   if (result) return result;
 
-  await setFlash("เพิ่มผู้เล่นแล้ว");
   revalidatePath(`/admin/tournaments/${tournamentId}/players`);
 }
 
@@ -153,7 +152,6 @@ export async function removePlayerFromTournament(formData: FormData) {
   }
 
   await prisma.tournamentPlayer.delete({ where: { id: tournamentPlayerId } });
-  await setFlash("ลบผู้เล่นออกจากการแข่งขันแล้ว");
   revalidatePath(`/admin/tournaments/${tp.tournamentId}/players`);
 }
 
@@ -169,7 +167,6 @@ export async function withdrawPlayer(formData: FormData) {
     where: { id: tournamentPlayerId },
     data: { status: "WITHDRAWN" },
   });
-  await setFlash("ถอนตัวผู้เล่นแล้ว");
   revalidatePath(`/admin/tournaments/${tp.tournamentId}/players`);
 }
 
@@ -181,19 +178,21 @@ export async function reactivatePlayer(formData: FormData) {
   await assertTournamentAccess(tp.tournamentId);
 
   // Coming back takes an ACTIVE seat again — refused if someone else has filled it meanwhile.
-  const reactivated = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const slots = await lockPlayerSlots(tx, tp.tournamentId);
     if (slots.remaining <= 0) {
-      await setFlash(playerLimitReachedMessage(slots.limit), "error");
-      return false;
+      await setFlash({
+        type: "error",
+        title: "ให้ผู้เล่นกลับเข้าแข่งไม่ได้",
+        description: playerLimitReachedMessage(slots.limit),
+      });
+      return;
     }
     await tx.tournamentPlayer.update({
       where: { id: tournamentPlayerId },
       data: { status: "ACTIVE" },
     });
-    return true;
   });
-  if (reactivated) await setFlash("ผู้เล่นกลับเข้าแข่งขันแล้ว");
   revalidatePath(`/admin/tournaments/${tp.tournamentId}/players`);
 }
 
@@ -314,6 +313,9 @@ export async function importPlayersToTournament(formData: FormData) {
       }`
     );
   }
-  await setFlash(`นำเข้าผู้เล่นเสร็จสิ้น — ${parts.join(", ")}`, summary.errors.length > 0 || summary.skippedFull > 0 ? "error" : "success");
+  // Only a partial import is worth an alert — a clean one shows up in the roster itself.
+  if (summary.errors.length > 0 || summary.skippedFull > 0) {
+    await setFlash({ type: "error", title: "นำเข้าผู้เล่นได้ไม่ครบ", description: parts.join(", ") });
+  }
   revalidatePath(`/admin/tournaments/${tournamentId}/players`);
 }

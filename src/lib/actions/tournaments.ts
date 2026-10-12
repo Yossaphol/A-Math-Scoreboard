@@ -79,11 +79,6 @@ export async function createTournament(formData: FormData) {
     },
   });
 
-  await setFlash(
-    pinCode
-      ? `สร้าง Tournament "${tournament.name}" แล้ว — รหัสผ่าน: ${pinCode}`
-      : `สร้าง Tournament "${tournament.name}" แล้ว`
-  );
   revalidatePath("/admin/tournaments");
   redirect(`/admin/tournaments/${tournament.id}`);
 }
@@ -109,7 +104,6 @@ export async function updateTournamentStatus(formData: FormData) {
 
   const tournament = await prisma.tournament.update({ where: { id: tournamentId }, data: { status } });
 
-  await setFlash("อัปเดตสถานะ Tournament แล้ว");
   revalidatePath(`/admin/tournaments/${tournamentId}`);
   revalidatePath(`/admin/tournaments/${tournamentId}/settings`);
   revalidatePath("/admin/tournaments");
@@ -136,7 +130,11 @@ export async function updateTournamentGeneral(formData: FormData) {
   const tournamentId = String(formData.get("tournamentId") ?? "");
   const actor = await assertTournamentAccess(tournamentId);
   if (!parsed.success) {
-    await setFlash(parsed.error.issues.map((i) => i.message).join(", "), "error");
+    await setFlash({
+      type: "error",
+      title: "บันทึกไม่สำเร็จ",
+      description: parsed.error.issues.map((i) => i.message).join(", "),
+    });
     revalidatePath(`/admin/tournaments/${tournamentId}/settings`);
     return;
   }
@@ -156,7 +154,6 @@ export async function updateTournamentGeneral(formData: FormData) {
       `คะแนนสูงสุดเริ่มต้น ${before.defaultMaximumScore ?? "—"} → ${defaultMaximumScore}`,
   ].filter(Boolean);
   if (changes.length === 0) {
-    await setFlash("ไม่มีอะไรเปลี่ยน");
     return;
   }
 
@@ -168,7 +165,6 @@ export async function updateTournamentGeneral(formData: FormData) {
     targetId: tournament.id,
   });
 
-  await setFlash("บันทึกแล้ว");
   revalidatePath(`/admin/tournaments/${tournamentId}`, "layout");
   revalidatePath("/admin/tournaments");
   revalidatePath(publicTournamentPath(tournament), "layout");
@@ -200,7 +196,7 @@ export async function updateTournamentLimits(formData: FormData) {
   const settingsPath = `/admin/tournaments/${tournamentId}/settings`;
 
   async function refuse(message: string) {
-    await setFlash(message, "error");
+    await setFlash({ type: "error", title: "บันทึกไม่สำเร็จ", description: message });
     revalidatePath(settingsPath);
   }
   if (setPlayerLimit && maxPlayers == null) return refuse("กรุณากรอกจำนวนผู้เล่น");
@@ -251,11 +247,11 @@ export async function updateTournamentLimits(formData: FormData) {
     }
 
     const updated = await tx.tournament.update({ where: { id: tournamentId }, data: { ...next, status } });
-    return { tournament: updated, statusChanged: status !== tournament.status } as const;
+    return { tournament: updated } as const;
   });
 
   if ("error" in outcome) return refuse(outcome.error!);
-  const { tournament, statusChanged } = outcome;
+  const { tournament } = outcome;
 
   const describe = (limit: number | null, unit: string) => (limit == null ? "ไม่จำกัด" : `${limit} ${unit}`);
   await logAdminAction({
@@ -266,11 +262,6 @@ export async function updateTournamentLimits(formData: FormData) {
     targetId: tournament.id,
   });
 
-  await setFlash(
-    statusChanged
-      ? `บันทึกแล้ว — สถานะ Tournament เปลี่ยนเป็น${tournament.status === "COMPLETED" ? "จบแล้ว" : "กำลังแข่งขัน"}`
-      : "บันทึกแล้ว"
-  );
   revalidatePath(`/admin/tournaments/${tournamentId}`, "layout");
   revalidatePath("/admin/tournaments");
   revalidatePath(publicTournamentPath(tournament), "layout");
@@ -305,7 +296,6 @@ export async function deleteTournament(formData: FormData) {
     targetId: tournament.id,
   });
 
-  await setFlash(`ลบ Tournament "${tournament.name}" แล้ว`);
   revalidatePath("/admin/tournaments");
   revalidatePath(publicTournamentListPath(tournament.mode));
   redirect("/admin/tournaments");
@@ -331,7 +321,7 @@ export async function unlockPracticeTournament(formData: FormData) {
   const tournament = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
 
   if (!tournament.pinCode || pin !== tournament.pinCode) {
-    await setFlash("รหัสผ่านไม่ถูกต้อง", "error");
+    await setFlash({ type: "error", title: "รหัสผ่านไม่ถูกต้อง", description: "ลองอีกครั้ง หรือติดต่อผู้จัด" });
     redirect(`/practice/${tournamentId}`);
   }
 
