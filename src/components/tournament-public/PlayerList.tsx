@@ -38,11 +38,10 @@ export async function PlayerList({ tournamentId, query }: { tournamentId: string
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
-                <th className="py-3 pl-5 pr-3">#</th>
+                <th className="py-3 pl-5 pr-3">อันดับ</th>
                 <th className="py-3 pr-3">Name</th>
-                <th className="py-3 pr-3 text-center">W</th>
-                <th className="py-3 pr-3 text-center">T</th>
-                <th className="py-3 pr-3 text-center">L</th>
+                <th className="py-3 pr-3 text-right">Points</th>
+                <th className="py-3 pr-3 text-center">W/T/L</th>
                 <th className="py-3 pr-5 text-right">ผลต่างสะสม</th>
               </tr>
             </thead>
@@ -64,9 +63,14 @@ export async function PlayerList({ tournamentId, query }: { tournamentId: string
                       </Badge>
                     )}
                   </td>
-                  <td className="py-3 pr-3 text-center">{p.wins}</td>
-                  <td className="py-3 pr-3 text-center">{p.ties}</td>
-                  <td className="py-3 pr-3 text-center">{p.losses}</td>
+                  <td className="py-3 pr-3 text-right font-medium">{p.points}</td>
+                  <td className="whitespace-nowrap py-3 pr-3 text-center tabular-nums">
+                    {p.wins}
+                    <span className="mx-0.5 text-neutral-300">/</span>
+                    {p.ties}
+                    <span className="mx-0.5 text-neutral-300">/</span>
+                    {p.losses}
+                  </td>
                   <td className="py-3 pr-5 text-right font-medium">
                     {p.cumulativeDiff > 0 ? `+${p.cumulativeDiff}` : p.cumulativeDiff}
                   </td>
