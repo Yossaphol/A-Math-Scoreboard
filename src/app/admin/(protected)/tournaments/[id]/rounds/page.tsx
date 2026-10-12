@@ -7,9 +7,11 @@ import { LinkRow } from "@/components/ui/LinkRow";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { PAIRING_METHOD_LABEL, ROUND_STATUS_BADGE } from "@/lib/status-labels";
 import { roundLimitOf } from "@/lib/tournament-limits";
+import { healStuckRounds } from "@/lib/match/round-completion";
 
 export default async function AdminRoundsPage(props: PageProps<"/admin/tournaments/[id]/rounds">) {
   const { id } = await props.params;
+  await healStuckRounds(id);
   const [tournament, rounds] = await Promise.all([
     prisma.tournament.findUniqueOrThrow({
       where: { id },

@@ -12,11 +12,14 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { NewRoundModal } from "@/components/ui/NewRoundModal";
 import { RoundPreviewBoard, type PreviewMatch } from "@/components/ui/RoundPreviewBoard";
 import { roundLimitOf } from "@/lib/tournament-limits";
+import { healStuckRounds } from "@/lib/match/round-completion";
 import { PAIRING_METHOD_LABEL } from "@/lib/status-labels";
 
 export default async function TournamentOverviewPage(props: PageProps<"/admin/tournaments/[id]">) {
   const { id } = await props.params;
 
+  // Close any fully played round left open, before deciding what "current round" is.
+  await healStuckRounds(id);
   const tournament = await prisma.tournament.findUniqueOrThrow({ where: { id } });
 
   const currentRound = await prisma.round.findFirst({

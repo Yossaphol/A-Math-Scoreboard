@@ -5,6 +5,7 @@ import { adminRejectByeClaim, adminSetMatchResult } from "@/lib/actions/match";
 import { BYE_SCORE } from "@/lib/match/bye";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
+import { healStuckRounds } from "@/lib/match/round-completion";
 import { deleteRound, repairRoundForAbsences, swapPreviewPlayers } from "@/lib/actions/pairing";
 import { cappedDiff } from "@/lib/match/diff";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -30,6 +31,7 @@ export default async function AdminRoundDetailPage(
 ) {
   const { id, roundId } = await props.params;
   await requireTournamentAccess(id);
+  await healStuckRounds(id);
 
   const round = await prisma.round.findUnique({
     where: { id: roundId },

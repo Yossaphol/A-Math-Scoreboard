@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { assertTournamentAccess } from "@/lib/dal";
 import { computeResult } from "@/lib/match/result";
 import { resolveMatchSubmission } from "@/lib/match/submit";
-import { maybeCompleteRound } from "@/lib/match/round-completion";
+import { completeRoundIfDone, revalidateTournamentStatus } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
 import { publicTournamentPath } from "@/lib/tournament-path";
 import { logAdminAction } from "@/lib/audit-log";
@@ -61,7 +61,7 @@ export async function submitMatchResult(formData: FormData) {
   } else if (outcome.kind === "waiting") {
     await setFlash("ส่งผลแล้ว รออีกฝ่ายกรอกผลเพื่อยืนยัน");
   } else if (outcome.kind === "confirmed") {
-    if (outcome.roundId) await maybeCompleteRound(outcome.roundId);
+    if (outcome.tournamentCompleted) revalidateTournamentStatus(outcome.tournamentCompleted);
     await setFlash("ผลตรงกัน ยืนยันผลแล้ว");
   } else {
     await setFlash("ผลไม่ตรงกับอีกฝ่าย ตรวจสอบกันอีกครั้ง หรือแจ้ง Admin/Staff", "error");
@@ -103,22 +103,26 @@ export async function adminSetMatchResult(formData: FormData) {
   }
 
   const result = computeResult(player1Score, player2Score);
-  await prisma.match.update({
-    where: { id: matchId },
-    data: {
-      finalPlayer1Score: player1Score,
-      finalPlayer2Score: player2Score,
-      player1Result: result.player1Result,
-      player2Result: result.player2Result,
-      status: "CONFIRMED",
-      editedByAdminId: admin.id,
-      // A real result means both players were there — drop any "opponent didn't show" claim.
-      byeClaimedById: null,
-      byeClaimedAt: null,
-    },
+  // Result + round completion in one transaction, same as the players' dual-submission flow.
+  const { tournamentCompleted } = await prisma.$transaction(async (tx) => {
+    await tx.match.update({
+      where: { id: matchId },
+      data: {
+        finalPlayer1Score: player1Score,
+        finalPlayer2Score: player2Score,
+        player1Result: result.player1Result,
+        player2Result: result.player2Result,
+        status: "CONFIRMED",
+        editedByAdminId: admin.id,
+        // A real result means both players were there — drop any "opponent didn't show" claim.
+        byeClaimedById: null,
+        byeClaimedAt: null,
+      },
+    });
+    return match.roundId ? completeRoundIfDone(tx, match.roundId) : { tournamentCompleted: null };
   });
+  if (tournamentCompleted) revalidateTournamentStatus(tournamentCompleted);
   if (match.roundId) {
-    await maybeCompleteRound(match.roundId);
     revalidatePath(`/admin/tournaments/${match.tournamentId}/rounds/${match.roundId}`);
   }
 

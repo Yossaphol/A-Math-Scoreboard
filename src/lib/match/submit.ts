@@ -1,13 +1,20 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { computeResult } from "@/lib/match/result";
+import { completeRoundIfDone } from "@/lib/match/round-completion";
+import type { TournamentMode } from "@/generated/prisma/enums";
 
 export type SubmitOutcome =
   | { kind: "not-found" }
   | { kind: "already-bye" }
   | { kind: "already-confirmed" }
   | { kind: "waiting" }
-  | { kind: "confirmed"; roundId: string | null }
+  | {
+      kind: "confirmed";
+      roundId: string | null;
+      // Set when this confirmation finished the Tournament's last round — callers revalidate.
+      tournamentCompleted: { id: string; mode: TournamentMode } | null;
+    }
   | { kind: "conflict" };
 
 /**
@@ -69,7 +76,12 @@ export async function resolveMatchSubmission(
           byeClaimedAt: null,
         },
       });
-      return { kind: "confirmed", roundId: match.roundId };
+      // Closing the round in this same transaction means a confirmed last match can never
+      // leave its round stuck in progress (see completeRoundIfDone).
+      const { tournamentCompleted } = match.roundId
+        ? await completeRoundIfDone(tx, match.roundId)
+        : { tournamentCompleted: null };
+      return { kind: "confirmed", roundId: match.roundId, tournamentCompleted };
     }
 
     await tx.match.update({ where: { id: matchId }, data: { status: "CONFLICT" } });

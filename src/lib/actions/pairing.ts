@@ -8,7 +8,7 @@ import { assertTournamentAccess } from "@/lib/dal";
 import { generatePairing } from "@/lib/pairing/generate";
 import { matchStarted, planAbsenceRepair } from "@/lib/pairing/absence-repair";
 import { getFirstSecondTotals, assignFirstSecond } from "@/lib/pairing/first-second";
-import { maybeCompleteRound } from "@/lib/match/round-completion";
+import { maybeCompleteRound, healStuckRounds } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
 import { publicTournamentPath, publicTournamentListPath } from "@/lib/tournament-path";
 import { roundLimitOf } from "@/lib/tournament-limits";
@@ -37,6 +37,8 @@ export async function startPairing(formData: FormData) {
   await assertTournamentAccess(tournamentId);
 
   const tournament = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+  // A fully played round that never got closed must not block the next one.
+  await healStuckRounds(tournamentId);
 
   // Only one Round may be in progress at a time — this is also what keeps the Table QR
   // lookup (spec §12) unambiguous about which round is "current".
