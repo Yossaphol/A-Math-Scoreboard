@@ -19,19 +19,33 @@ const COPY: Record<TournamentMode, { title: string; subtitle: string }> = {
   },
 };
 
+const RECENTLY_COMPLETED_DAYS = 7;
+
+// Server-rendered per request, so reading the clock here is the point, not a purity bug.
+function recentlyCompletedCutoff() {
+  return new Date(Date.now() - RECENTLY_COMPLETED_DAYS * 24 * 60 * 60 * 1000);
+}
+
 /** Shared body of the "/" (Competition) and "/practice" (Practice) tournament list
  * pages — same search + card list + empty state, just filtered by mode. */
 export async function TournamentListPage({ mode, query }: { mode: TournamentMode; query: string }) {
   const copy = COPY[mode];
   const basePath = publicTournamentListPath(mode);
 
-  // Public listing only surfaces what's actually relevant to a visitor right now — a
-  // finished tournament's own pages stay reachable by direct link, it just doesn't clutter
-  // this list.
+  // Public listing only surfaces what's actually relevant to a visitor right now: upcoming and
+  // ongoing tournaments, plus ones finished in the last RECENTLY_COMPLETED_DAYS — a Tournament
+  // can complete on its own the moment its last result is entered, which is exactly when
+  // players come looking for the final standings. Older finished tournaments stay reachable by
+  // direct link, they just don't clutter this list. updatedAt stands in for "completed at"
+  // (completing is the last write a finished Tournament normally gets).
+  const recentlyCompletedSince = recentlyCompletedCutoff();
   const tournaments = await prisma.tournament.findMany({
     where: {
       mode,
-      status: { in: ["ONGOING", "UPCOMING"] },
+      OR: [
+        { status: { in: ["ONGOING", "UPCOMING"] } },
+        { status: "COMPLETED", updatedAt: { gte: recentlyCompletedSince } },
+      ],
       ...(query ? { name: { contains: query, mode: "insensitive" } } : {}),
     },
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],

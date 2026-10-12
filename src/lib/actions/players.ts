@@ -8,6 +8,7 @@ import { setFlash } from "@/lib/flash";
 import { ensureTableCount } from "@/lib/tables";
 import { generateGlobalPlayerId } from "@/lib/global-player-id";
 import { parsePlayerImportFile, PlayerImportError } from "@/lib/players/import";
+import { lockPlayerSlots, playerLimitReachedMessage } from "@/lib/tournament-limits";
 
 const addPlayerSchema = z.object({
   tournamentId: z.string().min(1),
@@ -60,7 +61,9 @@ export async function searchGlobalPlayersForTournament(
 // Spec §1: Admin/Staff manage players directly — no self-signup. New players get the next
 // sequential Tournament Player ID (per-tournament, starting at 1); existing Global Players
 // can be reused across tournaments while keeping the same Global Player ID.
-export async function addPlayerToTournament(formData: FormData) {
+// Returns { error } instead of throwing when the Tournament's player limit is reached, so the
+// modal can say so inline and keep its "already in tournament" badges accurate.
+export async function addPlayerToTournament(formData: FormData): Promise<{ error: string } | undefined> {
   const parsed = addPlayerSchema.safeParse({
     tournamentId: formData.get("tournamentId"),
     globalPlayerId: formData.get("globalPlayerId") || undefined,
@@ -77,7 +80,11 @@ export async function addPlayerToTournament(formData: FormData) {
     throw new Error("ต้องเลือกผู้เล่นที่มีอยู่ หรือกรอกชื่อผู้เล่นใหม่");
   }
 
-  await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
+    // Checked before creating a new Global Player, so a refused add leaves nothing behind.
+    const slots = await lockPlayerSlots(tx, tournamentId);
+    if (slots.remaining <= 0) return { error: playerLimitReachedMessage(slots.limit) };
+
     let resolvedGlobalPlayerId = globalPlayerId;
 
     if (!resolvedGlobalPlayerId) {
@@ -118,6 +125,7 @@ export async function addPlayerToTournament(formData: FormData) {
     // there's always enough tables for every concurrent match.
     await ensureTableCount(tx, tournamentId);
   });
+  if (result) return result;
 
   await setFlash("เพิ่มผู้เล่นแล้ว");
   revalidatePath(`/admin/tournaments/${tournamentId}/players`);
@@ -172,10 +180,20 @@ export async function reactivatePlayer(formData: FormData) {
   });
   await assertTournamentAccess(tp.tournamentId);
 
-  await prisma.tournamentPlayer.update({
-    where: { id: tournamentPlayerId },
-    data: { status: "ACTIVE" },
+  // Coming back takes an ACTIVE seat again — refused if someone else has filled it meanwhile.
+  const reactivated = await prisma.$transaction(async (tx) => {
+    const slots = await lockPlayerSlots(tx, tp.tournamentId);
+    if (slots.remaining <= 0) {
+      await setFlash(playerLimitReachedMessage(slots.limit), "error");
+      return false;
+    }
+    await tx.tournamentPlayer.update({
+      where: { id: tournamentPlayerId },
+      data: { status: "ACTIVE" },
+    });
+    return true;
   });
+  if (reactivated) await setFlash("ผู้เล่นกลับเข้าแข่งขันแล้ว");
   revalidatePath(`/admin/tournaments/${tp.tournamentId}/players`);
 }
 
@@ -202,9 +220,20 @@ export async function importPlayersToTournament(formData: FormData) {
     throw new Error("อ่านไฟล์ไม่สำเร็จ — ตรวจสอบรูปแบบไฟล์อีกครั้ง");
   }
 
-  const summary = { addedNew: 0, addedExisting: 0, skippedDuplicate: 0, errors: [] as string[] };
+  const summary = {
+    addedNew: 0,
+    addedExisting: 0,
+    skippedDuplicate: 0,
+    skippedFull: 0,
+    errors: [] as string[],
+  };
+  let playerLimit: number | null = null;
 
   await prisma.$transaction(async (tx) => {
+    const slots = await lockPlayerSlots(tx, tournamentId);
+    playerLimit = slots.limit;
+    let remaining = slots.remaining;
+
     const last = await tx.tournamentPlayer.findFirst({
       where: { tournamentId },
       orderBy: { tournamentPlayerNo: "desc" },
@@ -212,6 +241,12 @@ export async function importPlayersToTournament(formData: FormData) {
     let nextNo = (last?.tournamentPlayerNo ?? 0) + 1;
 
     for (const [index, row] of rows.entries()) {
+      // Once the roster is full, the remaining rows are skipped before they can create a
+      // new Global Player that would never make it into this Tournament.
+      if (remaining <= 0) {
+        summary.skippedFull += 1;
+        continue;
+      }
       try {
         let globalPlayerId: number;
         let isNewGlobalPlayer = false;
@@ -254,6 +289,7 @@ export async function importPlayersToTournament(formData: FormData) {
           data: { tournamentId, globalPlayerId, tournamentPlayerNo: nextNo, status: "ACTIVE" },
         });
         nextNo += 1;
+        remaining -= 1;
         if (isNewGlobalPlayer) summary.addedNew += 1;
         else summary.addedExisting += 1;
       } catch (e) {
@@ -268,6 +304,9 @@ export async function importPlayersToTournament(formData: FormData) {
   if (summary.skippedDuplicate > 0) {
     parts.push(`ข้าม ${summary.skippedDuplicate} คน (มีอยู่ใน Tournament นี้แล้ว)`);
   }
+  if (summary.skippedFull > 0) {
+    parts.push(`ไม่ได้นำเข้า ${summary.skippedFull} แถว (ผู้เล่นครบ ${playerLimit} คนตามที่กำหนดไว้แล้ว)`);
+  }
   if (summary.errors.length > 0) {
     parts.push(
       `ผิดพลาด ${summary.errors.length} แถว: ${summary.errors.slice(0, 3).join("; ")}${
@@ -275,6 +314,6 @@ export async function importPlayersToTournament(formData: FormData) {
       }`
     );
   }
-  await setFlash(`นำเข้าผู้เล่นเสร็จสิ้น — ${parts.join(", ")}`, summary.errors.length > 0 ? "error" : "success");
+  await setFlash(`นำเข้าผู้เล่นเสร็จสิ้น — ${parts.join(", ")}`, summary.errors.length > 0 || summary.skippedFull > 0 ? "error" : "success");
   revalidatePath(`/admin/tournaments/${tournamentId}/players`);
 }

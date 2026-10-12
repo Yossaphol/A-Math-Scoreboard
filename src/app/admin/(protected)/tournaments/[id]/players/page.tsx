@@ -11,6 +11,7 @@ import { cappedDiff } from "@/lib/match/diff";
 import { getMaxScoreConfig } from "@/lib/match/max-score-config";
 import { BYE_SCORE } from "@/lib/match/bye";
 import { MATCH_OUTCOME_BADGE, MATCH_STATUS_BADGE, PLAYER_STATUS_BADGE } from "@/lib/status-labels";
+import { playerLimitOf, playerLimitReachedMessage } from "@/lib/tournament-limits";
 import type { MatchOutcome, MatchStatus } from "@/generated/prisma/enums";
 
 type HistoryEntry = {
@@ -36,7 +37,7 @@ export default async function TournamentPlayersPage(
 ) {
   const { id } = await props.params;
 
-  const [, players, matches, absences] = await Promise.all([
+  const [tournament, players, matches, absences] = await Promise.all([
     prisma.tournament.findUniqueOrThrow({ where: { id } }), // 404s an unknown id
     prisma.tournamentPlayer.findMany({
       where: { tournamentId: id },
@@ -54,6 +55,12 @@ export default async function TournamentPlayersPage(
     }),
     prisma.roundAbsence.findMany({ where: { tournamentId: id }, include: { round: true } }),
   ]);
+
+  // Same rule as lockPlayerSlots: the limit counts ACTIVE players only.
+  const playerLimit = playerLimitOf(tournament);
+  const activeCount = players.filter((p) => p.status === "ACTIVE").length;
+  const fullReason =
+    playerLimit != null && activeCount >= playerLimit ? playerLimitReachedMessage(playerLimit) : undefined;
 
   // Each player's games in this Tournament, from both sides of the Match, ordered by Round.
   // A self-service ad-hoc match (Practice mode, no staff Round) has round: null — those sort
@@ -194,6 +201,8 @@ export default async function TournamentPlayersPage(
                   <input type="hidden" name="tournamentPlayerId" value={p.id} />
                   <button
                     type="submit"
+                    disabled={!!fullReason}
+                    title={fullReason}
                     className={`${buttonBase} ${VARIANTS.secondary} ${SIZES.sm} w-full`}
                   >
                     กลับเข้าแข่งขัน
@@ -239,8 +248,13 @@ export default async function TournamentPlayersPage(
       rows={rows}
       actions={
         <>
-          <AddPlayerModal tournamentId={id} />
-          <ImportPlayersModal tournamentId={id} />
+          {playerLimit != null && (
+            <span className={`shrink-0 text-xs ${fullReason ? "font-medium text-danger" : "text-neutral-500"}`}>
+              Active {activeCount}/{playerLimit} คน{fullReason ? " · ครบแล้ว" : ""}
+            </span>
+          )}
+          <AddPlayerModal tournamentId={id} disabledReason={fullReason} />
+          <ImportPlayersModal tournamentId={id} disabledReason={fullReason} />
         </>
       }
     />

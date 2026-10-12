@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { NewRoundModal } from "@/components/ui/NewRoundModal";
 import { RoundPreviewBoard, type PreviewMatch } from "@/components/ui/RoundPreviewBoard";
+import { roundLimitOf } from "@/lib/tournament-limits";
 
 const METHOD_LABEL: Record<string, string> = {
   RANDOM: "Random",
@@ -54,12 +55,24 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
 
   const isPreview = currentRound?.status === "DRAFT" || currentRound?.status === "PREVIEW";
 
+  // Spec §7: with a set number of rounds, "+ New Round" goes away once the last one exists
+  // (startPairing refuses it server-side too).
+  const roundLimit = roundLimitOf(tournament);
+  const lastRound =
+    roundLimit != null
+      ? await prisma.round.findFirst({ where: { tournamentId: id }, orderBy: { roundNumber: "desc" } })
+      : null;
+  const allRoundsPlayed = roundLimit != null && (lastRound?.roundNumber ?? 0) >= roundLimit;
+
   return (
     <div>
       <PageHeader
         title="Scoreboard"
         actions={
-          !currentRound && (
+          !currentRound &&
+          (allRoundsPlayed ? (
+            <Badge variant="neutral">แข่งครบ {roundLimit} รอบแล้ว</Badge>
+          ) : (
             <NewRoundModal
               tournamentId={id}
               defaultMaximumScore={tournament.defaultMaximumScore ?? 350}
@@ -71,7 +84,7 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
                 name: p.globalPlayer.name,
               }))}
             />
-          )
+          ))
         }
       />
 

@@ -10,7 +10,8 @@ import { matchStarted, planAbsenceRepair } from "@/lib/pairing/absence-repair";
 import { getFirstSecondTotals, assignFirstSecond } from "@/lib/pairing/first-second";
 import { maybeCompleteRound } from "@/lib/match/round-completion";
 import { setFlash } from "@/lib/flash";
-import { publicTournamentPath } from "@/lib/tournament-path";
+import { publicTournamentPath, publicTournamentListPath } from "@/lib/tournament-path";
+import { roundLimitOf } from "@/lib/tournament-limits";
 import { logAdminAction } from "@/lib/audit-log";
 import type { PairingMethod } from "@/generated/prisma/enums";
 
@@ -55,6 +56,15 @@ export async function startPairing(formData: FormData) {
     orderBy: { roundNumber: "desc" },
   });
   const roundNumber = (lastRound?.roundNumber ?? 0) + 1;
+
+  // Spec §7: a set number of rounds is a hard stop — once the last one is played the
+  // Tournament is finished (maybeCompleteRound marks it COMPLETED), so no round past it.
+  const roundLimit = roundLimitOf(tournament);
+  if (roundLimit != null && roundNumber > roundLimit) {
+    await setFlash(`แข่งครบ ${roundLimit} รอบตามที่กำหนดไว้แล้ว เปิด Round ใหม่ไม่ได้`, "error");
+    revalidatePath(`/admin/tournaments/${tournamentId}`);
+    return;
+  }
 
   // Practice-mode only: staff can pick a subset of the active roster to play this round
   // (spec §7 — not everyone has to play every round). A COMPETITION tournament's form never
@@ -221,14 +231,21 @@ export async function confirmPairing(formData: FormData) {
       where: { roundId, isBye: true },
       data: { status: "BYE" },
     }),
+    // Play has started — the counterpart of maybeCompleteRound finishing the Tournament after
+    // its last round. Only from UPCOMING, so a manually set status is never overridden.
+    prisma.tournament.updateMany({
+      where: { id: round.tournamentId, status: "UPCOMING" },
+      data: { status: "ONGOING" },
+    }),
   ]);
 
   await maybeCompleteRound(roundId);
 
   await setFlash(`Confirm Round ${round.roundNumber} แล้ว`);
-  revalidatePath(`/admin/tournaments/${round.tournamentId}`);
-  revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
-  revalidatePath(publicTournamentPath({ id: round.tournamentId, mode: round.tournament.mode }));
+  revalidatePath(`/admin/tournaments/${round.tournamentId}`, "layout");
+  revalidatePath("/admin/tournaments");
+  revalidatePath(publicTournamentPath({ id: round.tournamentId, mode: round.tournament.mode }), "layout");
+  revalidatePath(publicTournamentListPath(round.tournament.mode));
 }
 
 export async function cancelPreview(formData: FormData) {
@@ -255,7 +272,9 @@ export async function deleteRound(formData: FormData) {
   const roundId = String(formData.get("roundId"));
   const round = await prisma.round.findUniqueOrThrow({
     where: { id: roundId },
-    include: { tournament: { select: { mode: true } } },
+    include: {
+      tournament: { select: { mode: true, status: true, setNumberOfGames: true, numberOfGames: true } },
+    },
   });
   const admin = await assertTournamentAccess(round.tournamentId);
 
@@ -269,15 +288,31 @@ export async function deleteRound(formData: FormData) {
 
   await prisma.round.delete({ where: { id: roundId } });
 
+  // Deleting the final round of a set-length Tournament (which maybeCompleteRound finished)
+  // means it's going to be replayed — reopen the Tournament so a new round can be paired.
+  const roundLimit = roundLimitOf(round.tournament);
+  const reopened =
+    roundLimit != null && round.roundNumber >= roundLimit && round.tournament.status === "COMPLETED";
+  if (reopened) {
+    await prisma.tournament.update({ where: { id: round.tournamentId }, data: { status: "ONGOING" } });
+    revalidatePath(`/admin/tournaments/${round.tournamentId}`, "layout");
+    revalidatePath("/admin/tournaments");
+    revalidatePath(publicTournamentListPath(round.tournament.mode));
+  }
+
   await logAdminAction({
     actorId: admin.id,
     action: "round.delete",
-    summary: `ลบ Round ${round.roundNumber} (สถานะตอนลบ: ${round.status})`,
+    summary: `ลบ Round ${round.roundNumber} (สถานะตอนลบ: ${round.status})${reopened ? " · เปิด Tournament กลับเป็น Ongoing" : ""}`,
     targetType: "Round",
     targetId: round.id,
   });
 
-  await setFlash(`ลบ Round ${round.roundNumber} แล้ว`);
+  await setFlash(
+    reopened
+      ? `ลบ Round ${round.roundNumber} แล้ว — เปิด Tournament กลับเป็นกำลังแข่งขัน`
+      : `ลบ Round ${round.roundNumber} แล้ว`
+  );
   revalidatePath(`/admin/tournaments/${round.tournamentId}`);
   revalidatePath(`/admin/tournaments/${round.tournamentId}/rounds`);
   revalidatePath(publicTournamentPath({ id: round.tournamentId, mode: round.tournament.mode }));

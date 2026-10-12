@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { requireTournamentAccess } from "@/lib/dal";
-import { updateTournamentStatus, deleteTournament } from "@/lib/actions/tournaments";
+import { updateTournamentStatus, updateTournamentLimits, deleteTournament } from "@/lib/actions/tournaments";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { ToggleGroup } from "@/components/ui/ToggleGroup";
+import { playerLimitOf, roundLimitOf } from "@/lib/tournament-limits";
 import { inputClass, labelClass } from "@/components/ui/styles";
 
 export default async function AdminSettingsPage(props: PageProps<"/admin/tournaments/[id]/settings">) {
@@ -19,7 +21,7 @@ export default async function AdminSettingsPage(props: PageProps<"/admin/tournam
           <input type="hidden" name="tournamentId" value={id} />
           <div className="min-w-0 flex-1">
             <label className={labelClass}>สถานะปัจจุบัน</label>
-            <select name="status" defaultValue={tournament.status} className={`${inputClass} mt-1`}>
+            <select key={tournament.status} name="status" defaultValue={tournament.status} className={`${inputClass} mt-1`}>
               <option value="UPCOMING">เร็ว ๆ นี้ (กำลังเตรียม)</option>
               <option value="ONGOING">กำลังแข่งขัน</option>
               <option value="COMPLETED">จบแล้ว</option>
@@ -30,20 +32,48 @@ export default async function AdminSettingsPage(props: PageProps<"/admin/tournam
       </Card>
 
       <Card>
+        <h2 className="mb-1 text-sm font-medium text-neutral-900">จำนวนผู้เล่นและจำนวนรอบ</h2>
         <p className="mb-4 text-xs text-neutral-500">
-          แก้ไข Setting อื่น ๆ หลังสร้าง Tournament แล้วจะมาใน Phase ถัดไป — ตอนนี้แสดงค่าปัจจุบันแบบ read-only
+          ผู้เล่น Active ครบแล้วจะเพิ่มผู้เล่นไม่ได้ · แข่งครบจำนวนรอบแล้ว Tournament จะจบอัตโนมัติ ·
+          ตั้งน้อยกว่าผู้เล่น Active หรือจำนวนรอบที่สร้างไปแล้วไม่ได้
+        </p>
+        <form action={updateTournamentLimits} className="space-y-4">
+          <input type="hidden" name="tournamentId" value={id} />
+          <ToggleGroup name="setPlayerLimit" label="กำหนดจำนวนผู้เล่น" defaultChecked={playerLimitOf(tournament) != null}>
+            <label className={labelClass}>จำนวนผู้เล่น</label>
+            <input
+              name="maxPlayers"
+              type="number"
+              min={1}
+              required
+              defaultValue={tournament.maxPlayers ?? 24}
+              className={`${inputClass} mt-1`}
+            />
+          </ToggleGroup>
+          <ToggleGroup name="setNumberOfGames" label="กำหนดจำนวนรอบการแข่งขัน" defaultChecked={roundLimitOf(tournament) != null}>
+            <label className={labelClass}>จำนวนรอบการแข่งขัน</label>
+            <input
+              name="numberOfGames"
+              type="number"
+              min={1}
+              required
+              defaultValue={tournament.numberOfGames ?? 6}
+              className={`${inputClass} mt-1`}
+            />
+          </ToggleGroup>
+          <div className="flex justify-end">
+            <Button type="submit">บันทึก</Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card>
+        <p className="mb-4 text-xs text-neutral-500">
+          Setting อื่น ๆ ยังแก้หลังสร้าง Tournament ไม่ได้ — แสดงค่าปัจจุบันแบบ read-only
         </p>
         <dl className="grid grid-cols-2 gap-y-4 text-sm">
           <dt className="text-neutral-500">Mode</dt>
           <dd className="font-medium text-neutral-900">{tournament.mode}</dd>
-          <dt className="text-neutral-500">Player Limit</dt>
-          <dd className="font-medium text-neutral-900">
-            {tournament.setPlayerLimit ? tournament.maxPlayers : "Off"}
-          </dd>
-          <dt className="text-neutral-500">Number of Games</dt>
-          <dd className="font-medium text-neutral-900">
-            {tournament.setNumberOfGames ? tournament.numberOfGames : "Off"}
-          </dd>
           <dt className="text-neutral-500">First / Second</dt>
           <dd className="font-medium text-neutral-900">{tournament.useFirstSecond ? "On" : "Off"}</dd>
           <dt className="text-neutral-500">Default Maximum Score</dt>

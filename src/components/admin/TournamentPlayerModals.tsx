@@ -68,8 +68,17 @@ function CancelButton({ onClick }: { onClick: () => void }) {
  * only when they aren't found does the admin switch to creating a new one, prefilled with what
  * they typed. The modal stays open after adding an existing player so several can be added.
  */
-export function AddPlayerModal({ tournamentId }: { tournamentId: string }) {
+export function AddPlayerModal({
+  tournamentId,
+  disabledReason,
+}: {
+  tournamentId: string;
+  // Set when the Tournament's player limit is already reached — the button stays visible but
+  // disabled, with the reason as its tooltip.
+  disabledReason?: string;
+}) {
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GlobalPlayerSearchResult[] | null>(null);
@@ -93,6 +102,7 @@ export function AddPlayerModal({ tournamentId }: { tournamentId: string }) {
     setView("search");
     setQuery("");
     setResults(null);
+    setError(null);
   }
 
   async function addExisting(gp: GlobalPlayerSearchResult) {
@@ -101,7 +111,11 @@ export function AddPlayerModal({ tournamentId }: { tournamentId: string }) {
       const fd = new FormData();
       fd.set("tournamentId", tournamentId);
       fd.set("globalPlayerId", String(gp.id));
-      await addPlayerToTournament(fd);
+      const res = await addPlayerToTournament(fd);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
       setResults((rs) => rs?.map((r) => (r.id === gp.id ? { ...r, inTournament: true } : r)) ?? null);
     } finally {
       setAddingId(null);
@@ -113,7 +127,13 @@ export function AddPlayerModal({ tournamentId }: { tournamentId: string }) {
 
   return (
     <>
-      <Button type="button" onClick={() => setOpen(true)} className="shrink-0">
+      <Button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="shrink-0"
+        disabled={!!disabledReason}
+        title={disabledReason}
+      >
         + เพิ่มผู้เล่น
       </Button>
 
@@ -123,6 +143,7 @@ export function AddPlayerModal({ tournamentId }: { tournamentId: string }) {
           maxWidth="max-w-md"
           onClose={close}
         >
+          {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-danger">{error}</p>}
           {view === "search" ? (
             <div className="mt-4">
               <input
@@ -196,7 +217,11 @@ export function AddPlayerModal({ tournamentId }: { tournamentId: string }) {
           ) : (
             <form
               action={async (formData) => {
-                await addPlayerToTournament(formData);
+                const res = await addPlayerToTournament(formData);
+                if (res?.error) {
+                  setError(res.error);
+                  return;
+                }
                 close();
               }}
               className="mt-4 space-y-4"
@@ -241,12 +266,25 @@ export function AddPlayerModal({ tournamentId }: { tournamentId: string }) {
 }
 
 /** Bulk import from .csv/.xlsx/.json — the column rules live here instead of on the page. */
-export function ImportPlayersModal({ tournamentId }: { tournamentId: string }) {
+export function ImportPlayersModal({
+  tournamentId,
+  disabledReason,
+}: {
+  tournamentId: string;
+  disabledReason?: string;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Button type="button" variant="secondary" onClick={() => setOpen(true)} className="shrink-0">
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={() => setOpen(true)}
+        className="shrink-0"
+        disabled={!!disabledReason}
+        title={disabledReason}
+      >
         นำเข้าจากไฟล์
       </Button>
 
@@ -275,6 +313,7 @@ export function ImportPlayersModal({ tournamentId }: { tournamentId: string }) {
               แถวนั้นจะถูกข้ามพร้อมแจ้ง error เป็นรายแถว ไม่สร้างผู้เล่นใหม่ให้
             </p>
             <p>ผู้เล่นที่อยู่ในทัวร์นาเมนต์นี้อยู่แล้วจะถูกข้าม ไม่เพิ่มซ้ำ</p>
+            <p>ถ้ากำหนดจำนวนผู้เล่นไว้ จะนำเข้าตามลำดับแถวจนครบจำนวน แถวที่เกินจะไม่ถูกนำเข้า</p>
           </div>
 
           <form
