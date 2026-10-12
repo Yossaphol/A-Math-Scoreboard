@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
-import { MATCH_STATUS_BADGE, ROUND_STATUS_BADGE, MATCH_OUTCOME_BADGE } from "@/lib/status-labels";
+import { MATCH_STATUS_BADGE, ROUND_STATUS_BADGE, MATCH_OUTCOME_BADGE, PAIRING_METHOD_LABEL } from "@/lib/status-labels";
 import type { MatchOutcome } from "@/generated/prisma/enums";
 
 type RoundScoreRow = {
@@ -395,13 +395,6 @@ export default async function AdminRoundDetailPage(
     </div>
   );
 }
-
-const PAIRING_METHOD_LABEL: Record<string, string> = {
-  RANDOM: "Random",
-  SWISS: "Swiss",
-  KING_OF_THE_HILL: "King of the Hill",
-  ROUND_ROBIN: "Round Robin",
-};
 
 // Check-in: tick everyone who didn't show up, then re-pair around them in one go — the
 // players left without an opponent play each other instead of each getting a Bye.

@@ -1,5 +1,17 @@
 type BadgeVariant = "neutral" | "accent" | "success" | "warning" | "danger" | "info";
 
+export const PAIRING_METHOD_LABEL: Record<string, string> = {
+  RANDOM: "Random",
+  SWISS: "Swiss",
+  KING_OF_THE_HILL: "King of the Hill",
+  ROUND_ROBIN: "Round Robin",
+};
+
+export const STAFF_STATUS_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {
+  ACTIVE: { label: "ใช้งาน", variant: "success" },
+  REVOKED: { label: "ถูกถอดแล้ว", variant: "neutral" },
+};
+
 export const TOURNAMENT_STATUS_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {
   UPCOMING: { label: "เร็ว ๆ นี้", variant: "warning" },
   ONGOING: { label: "กำลังแข่งขัน", variant: "success" },

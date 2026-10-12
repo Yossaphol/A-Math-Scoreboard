@@ -12,13 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { NewRoundModal } from "@/components/ui/NewRoundModal";
 import { RoundPreviewBoard, type PreviewMatch } from "@/components/ui/RoundPreviewBoard";
 import { roundLimitOf } from "@/lib/tournament-limits";
-
-const METHOD_LABEL: Record<string, string> = {
-  RANDOM: "Random",
-  SWISS: "Swiss",
-  KING_OF_THE_HILL: "King of the Hill",
-  ROUND_ROBIN: "Round Robin",
-};
+import { PAIRING_METHOD_LABEL } from "@/lib/status-labels";
 
 export default async function TournamentOverviewPage(props: PageProps<"/admin/tournaments/[id]">) {
   const { id } = await props.params;
@@ -202,7 +196,7 @@ function LiveRoundBanner({ tournamentId, round }: { tournamentId: string; round:
     <Card className={`mb-6 ${issues.length > 0 ? "!bg-red-50/60 border-red-200" : "!bg-accent/5 border-accent/20"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-neutral-700">
-          Round {round.roundNumber} · {METHOD_LABEL[round.pairingMethod ?? ""]} · กำลังแข่งขัน
+          Round {round.roundNumber} · {PAIRING_METHOD_LABEL[round.pairingMethod ?? ""]} · กำลังแข่งขัน
         </span>
         <Link href={roundHref} className="shrink-0 text-xs font-medium text-accent hover:underline">
           ไปที่ Round {round.roundNumber} →
@@ -320,7 +314,7 @@ function RoundPreviewSection({
     <div className="mb-6">
       <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 !bg-amber-50/70 border-amber-200">
         <span className="text-sm text-amber-900">
-          Round {round.roundNumber} · {METHOD_LABEL[round.pairingMethod ?? ""]} · Preview —
+          Round {round.roundNumber} · {PAIRING_METHOD_LABEL[round.pairingMethod ?? ""]} · Preview —
           ยังไม่ Confirm
         </span>
         <div className="flex gap-2">
