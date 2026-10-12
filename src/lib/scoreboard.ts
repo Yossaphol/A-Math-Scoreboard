@@ -118,10 +118,13 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
   const sorted = Array.from(rows.values()).sort(
     (a, b) => b.points - a.points || b.cumulativeDiff - a.cumulativeDiff
   );
-  // "#" is the standing rank (1, 2, 3, ...), not the fixed Tournament Player No — the latter
-  // is shown next to the player's name instead.
+  // "#" is the standing rank, not the fixed Tournament Player No (shown next to the name
+  // instead). Players level on both points and Diff share a rank (1, 2, 2, 4) rather than
+  // being split by an order the scoring rules don't define.
   sorted.forEach((row, i) => {
-    row.rank = i + 1;
+    const prev = sorted[i - 1];
+    row.rank =
+      prev && prev.points === row.points && prev.cumulativeDiff === row.cumulativeDiff ? prev.rank : i + 1;
   });
   return sorted;
 }

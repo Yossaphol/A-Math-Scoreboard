@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { adminRejectByeClaim, adminSetMatchResult } from "@/lib/actions/match";
 import { BYE_SCORE } from "@/lib/match/bye";
 import { SubmitButton } from "@/components/ui/SubmitButton";
+import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { deleteRound, repairRoundForAbsences, swapPreviewPlayers } from "@/lib/actions/pairing";
 import { cappedDiff } from "@/lib/match/diff";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -164,8 +165,183 @@ export default async function AdminRoundDetailPage(
   attendees.sort((a, b) => a.no - b.no);
   const swappable = attendees.filter((a) => !a.locked && !absentIds.has(a.id));
 
+  // During play the page is a work queue: matches needing Admin/Staff first (score conflict,
+  // "opponent didn't show" report), then ones waiting on a report, both in table order;
+  // finished ones are folded away. Before/after play it's just the round in table order.
+  const inProgress = round.status === "CONFIRMED";
+  const byTable = (a: (typeof round.matches)[number], b: (typeof round.matches)[number]) =>
+    (a.table?.tableNumber ?? Infinity) - (b.table?.tableNumber ?? Infinity);
+  const sortedMatches = [...round.matches].sort(byTable);
+  const isDone = (m: (typeof round.matches)[number]) => m.status === "CONFIRMED" || m.status === "BYE";
+  const priority = (m: (typeof round.matches)[number]) =>
+    needsAttention(m) ? 0 : m.status === "SUBMITTED" ? 1 : 2;
+  const openMatches = sortedMatches.filter((m) => !isDone(m)).sort((a, b) => priority(a) - priority(b));
+  const doneMatches = sortedMatches.filter(isDone);
+
+  const roundScoreTable = roundRows.length > 0 && (
+    <Card padding="p-0" className="mb-6 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
+            <th className="py-3 pl-5 pr-3">ผู้เล่น</th>
+            <th className="py-3 pr-3">คู่ต่อสู้</th>
+            <th className="py-3 pr-3 text-center">ผล</th>
+            <th className="py-3 pr-3 text-right">คะแนนที่ทำได้</th>
+            <th className="py-3 pr-3 text-right">คะแนนคู่ต่อสู้</th>
+            <th className="py-3 pr-5 text-right">ผลต่าง</th>
+          </tr>
+        </thead>
+        <tbody>
+          {roundRows.map((r) => {
+            const badge = r.result ? MATCH_OUTCOME_BADGE[r.result] : null;
+            return (
+              <tr key={r.tournamentPlayerId} className="border-b border-neutral-100 last:border-0">
+                <td className="py-3 pl-5 pr-3">
+                  {r.name}
+                  <span className="ml-1.5 text-xs text-neutral-400">(#{r.tournamentPlayerNo})</span>
+                </td>
+                <td className="py-3 pr-3 text-neutral-600">{r.opponentName}</td>
+                <td className="py-3 pr-3 text-center">
+                  {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : "—"}
+                </td>
+                <td className="py-3 pr-3 text-right">{r.ownScore ?? "—"}</td>
+                <td className="py-3 pr-3 text-right">{r.opponentScore ?? "—"}</td>
+                <td className="py-3 pr-5 text-right">
+                  {r.diff == null ? "—" : r.diff > 0 ? `+${r.diff}` : r.diff}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
+  );
+
+  const renderMatch = (m: (typeof round.matches)[number]) => {
+    const p1Sub = m.submissions.find((s) => s.side === "PLAYER1");
+    const p2Sub = m.submissions.find((s) => s.side === "PLAYER2");
+    const status = MATCH_STATUS_BADGE[m.status];
+
+    return (
+      <li key={m.id} id={`match-${m.id}`} className="scroll-mt-6">
+        <Card padding="p-4" className={needsAttention(m) ? "border-red-200 !bg-red-50/40" : ""}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 break-words font-medium">
+              {m.player1.globalPlayer.name}
+              {m.player2 ? ` vs ${m.player2.globalPlayer.name}` : " (Bye)"}
+            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              {m.table && (
+                <span className="text-xs text-neutral-500">Table {m.table.tableNumber}</span>
+              )}
+              <Badge variant={status.variant}>{status.label}</Badge>
+            </div>
+          </div>
+
+          {m.status === "CONFIRMED" && !m.isBye && (
+            <p className="mt-1.5 text-xs text-neutral-500">
+              ผล: {m.finalPlayer1Score} - {m.finalPlayer2Score}
+              {m.editedByAdminId && " (แก้ไขโดย Admin/Staff)"}
+            </p>
+          )}
+
+          {m.byeClaimedById && m.player2 && m.status !== "CONFIRMED" && editable && (
+            <ByeClaimBanner
+              roundId={round.id}
+              matchId={m.id}
+              claimantName={
+                m.byeClaimedById === m.player1Id ? m.player1.globalPlayer.name : m.player2.globalPlayer.name
+              }
+              absentName={
+                m.byeClaimedById === m.player1Id ? m.player2.globalPlayer.name : m.player1.globalPlayer.name
+              }
+              absentPlayerId={m.byeClaimedById === m.player1Id ? m.player2.id : m.player1Id}
+              currentAbsentIds={[...absentIds]}
+              claimedAt={m.byeClaimedAt}
+            />
+          )}
+
+          {m.status === "CONFLICT" && (p1Sub || p2Sub) && (
+            <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-danger">
+              <p>
+                {m.player1.globalPlayer.name} ส่ง: {p1Sub?.player1Score ?? "—"} -{" "}
+                {p1Sub?.player2Score ?? "—"}
+              </p>
+              <p>
+                {m.player2?.globalPlayer.name} ส่ง: {p2Sub?.player1Score ?? "—"} -{" "}
+                {p2Sub?.player2Score ?? "—"}
+              </p>
+            </div>
+          )}
+
+          {!m.isBye && m.status !== "CONFIRMED" && (
+            <form action={adminSetMatchResult} className="mt-3 flex flex-wrap items-end gap-2">
+              <input type="hidden" name="matchId" value={m.id} />
+              <ScoreField
+                label={m.player1.globalPlayer.name}
+                name="player1Score"
+                defaultValue={p1Sub?.player1Score ?? p2Sub?.player1Score}
+              />
+              <ScoreField
+                label={m.player2?.globalPlayer.name ?? ""}
+                name="player2Score"
+                defaultValue={p1Sub?.player2Score ?? p2Sub?.player2Score}
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+              >
+                บันทึกผล (Admin)
+              </button>
+            </form>
+          )}
+          {!m.isBye && m.status === "CONFIRMED" && (
+            <details className="mt-2 group">
+              <summary className="cursor-pointer text-xs text-neutral-500 group-open:mb-2">
+                แก้ไขผล
+              </summary>
+              <form action={adminSetMatchResult} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="matchId" value={m.id} />
+                <ScoreField
+                  label={m.player1.globalPlayer.name}
+                  name="player1Score"
+                  defaultValue={m.finalPlayer1Score ?? undefined}
+                />
+                <ScoreField
+                  label={m.player2?.globalPlayer.name ?? ""}
+                  name="player2Score"
+                  defaultValue={m.finalPlayer2Score ?? undefined}
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg border border-neutral-200 bg-white/70 px-3 py-1.5 text-xs hover:bg-white"
+                >
+                  บันทึก
+                </button>
+              </form>
+            </details>
+          )}
+        </Card>
+      </li>
+    );
+  };
+
+  // Check-in and manual swaps — only while the pairing can still change.
+  const editTools = editable && (
+    <>
+      <AttendanceCard
+        roundId={round.id}
+        pairingMethod={round.pairingMethod ?? "RANDOM"}
+        attendees={attendees}
+        absentIds={absentIds}
+      />
+      {swappable.length >= 2 && <SwapCard roundId={round.id} players={swappable} />}
+    </>
+  );
+
   return (
     <div>
+      {inProgress && <AutoRefresh intervalMs={8000} />}
       <PageHeader
         title={`Round ${round.roundNumber}`}
         actions={
@@ -190,165 +366,32 @@ export default async function AdminRoundDetailPage(
         }
       />
 
-      {roundRows.length > 0 && (
-        <Card padding="p-0" className="mb-6 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
-                <th className="py-3 pl-5 pr-3">ผู้เล่น</th>
-                <th className="py-3 pr-3">คู่ต่อสู้</th>
-                <th className="py-3 pr-3 text-center">ผล</th>
-                <th className="py-3 pr-3 text-right">คะแนนที่ทำได้</th>
-                <th className="py-3 pr-3 text-right">คะแนนคู่ต่อสู้</th>
-                <th className="py-3 pr-5 text-right">ผลต่าง</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roundRows.map((r) => {
-                const badge = r.result ? MATCH_OUTCOME_BADGE[r.result] : null;
-                return (
-                  <tr key={r.tournamentPlayerId} className="border-b border-neutral-100 last:border-0">
-                    <td className="py-3 pl-5 pr-3">
-                      {r.name}
-                      <span className="ml-1.5 text-xs text-neutral-400">(#{r.tournamentPlayerNo})</span>
-                    </td>
-                    <td className="py-3 pr-3 text-neutral-600">{r.opponentName}</td>
-                    <td className="py-3 pr-3 text-center">
-                      {badge ? <Badge variant={badge.variant}>{badge.label}</Badge> : "—"}
-                    </td>
-                    <td className="py-3 pr-3 text-right">{r.ownScore ?? "—"}</td>
-                    <td className="py-3 pr-3 text-right">{r.opponentScore ?? "—"}</td>
-                    <td className="py-3 pr-5 text-right">
-                      {r.diff == null ? "—" : r.diff > 0 ? `+${r.diff}` : r.diff}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
+      {inProgress ? (
+        <>
+          <RoundProgress
+            done={doneMatches.length}
+            total={round.matches.length}
+            attention={openMatches.filter(needsAttention).length}
+          />
+          {openMatches.length > 0 && <ul className="mb-6 space-y-3">{openMatches.map(renderMatch)}</ul>}
+          {editTools}
+          {doneMatches.length > 0 && (
+            <details className="group mb-6">
+              <summary className="cursor-pointer text-xs text-neutral-500 group-open:mb-2">
+                ยืนยันผลแล้ว ({doneMatches.length})
+              </summary>
+              <ul className="space-y-3">{doneMatches.map(renderMatch)}</ul>
+            </details>
+          )}
+          {roundScoreTable}
+        </>
+      ) : (
+        <>
+          {roundScoreTable}
+          {editTools}
+          <ul className="space-y-3">{sortedMatches.map(renderMatch)}</ul>
+        </>
       )}
-
-      {editable && (
-        <AttendanceCard
-          roundId={round.id}
-          pairingMethod={round.pairingMethod ?? "RANDOM"}
-          attendees={attendees}
-          absentIds={absentIds}
-        />
-      )}
-      {editable && swappable.length >= 2 && <SwapCard roundId={round.id} players={swappable} />}
-
-      <ul className="space-y-3">
-        {round.matches.map((m) => {
-          const p1Sub = m.submissions.find((s) => s.side === "PLAYER1");
-          const p2Sub = m.submissions.find((s) => s.side === "PLAYER2");
-          const status = MATCH_STATUS_BADGE[m.status];
-
-          return (
-            <li key={m.id}>
-              <Card padding="p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="min-w-0 break-words font-medium">
-                    {m.player1.globalPlayer.name}
-                    {m.player2 ? ` vs ${m.player2.globalPlayer.name}` : " (Bye)"}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {m.table && (
-                      <span className="text-xs text-neutral-500">Table {m.table.tableNumber}</span>
-                    )}
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                  </div>
-                </div>
-
-                {m.status === "CONFIRMED" && !m.isBye && (
-                  <p className="mt-1.5 text-xs text-neutral-500">
-                    ผล: {m.finalPlayer1Score} - {m.finalPlayer2Score}
-                    {m.editedByAdminId && " (แก้ไขโดย Admin/Staff)"}
-                  </p>
-                )}
-
-                {m.byeClaimedById && m.player2 && m.status !== "CONFIRMED" && editable && (
-                  <ByeClaimBanner
-                    roundId={round.id}
-                    matchId={m.id}
-                    claimantName={
-                      m.byeClaimedById === m.player1Id ? m.player1.globalPlayer.name : m.player2.globalPlayer.name
-                    }
-                    absentName={
-                      m.byeClaimedById === m.player1Id ? m.player2.globalPlayer.name : m.player1.globalPlayer.name
-                    }
-                    absentPlayerId={m.byeClaimedById === m.player1Id ? m.player2.id : m.player1Id}
-                    currentAbsentIds={[...absentIds]}
-                    claimedAt={m.byeClaimedAt}
-                  />
-                )}
-
-                {m.status === "CONFLICT" && (p1Sub || p2Sub) && (
-                  <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-danger">
-                    <p>
-                      {m.player1.globalPlayer.name} ส่ง: {p1Sub?.player1Score ?? "—"} -{" "}
-                      {p1Sub?.player2Score ?? "—"}
-                    </p>
-                    <p>
-                      {m.player2?.globalPlayer.name} ส่ง: {p2Sub?.player1Score ?? "—"} -{" "}
-                      {p2Sub?.player2Score ?? "—"}
-                    </p>
-                  </div>
-                )}
-
-                {!m.isBye && m.status !== "CONFIRMED" && (
-                  <form action={adminSetMatchResult} className="mt-3 flex flex-wrap items-end gap-2">
-                    <input type="hidden" name="matchId" value={m.id} />
-                    <ScoreField
-                      label={m.player1.globalPlayer.name}
-                      name="player1Score"
-                      defaultValue={p1Sub?.player1Score ?? p2Sub?.player1Score}
-                    />
-                    <ScoreField
-                      label={m.player2?.globalPlayer.name ?? ""}
-                      name="player2Score"
-                      defaultValue={p1Sub?.player2Score ?? p2Sub?.player2Score}
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
-                    >
-                      บันทึกผล (Admin)
-                    </button>
-                  </form>
-                )}
-                {!m.isBye && m.status === "CONFIRMED" && (
-                  <details className="mt-2 group">
-                    <summary className="cursor-pointer text-xs text-neutral-500 group-open:mb-2">
-                      แก้ไขผล
-                    </summary>
-                    <form action={adminSetMatchResult} className="flex flex-wrap items-end gap-2">
-                      <input type="hidden" name="matchId" value={m.id} />
-                      <ScoreField
-                        label={m.player1.globalPlayer.name}
-                        name="player1Score"
-                        defaultValue={m.finalPlayer1Score ?? undefined}
-                      />
-                      <ScoreField
-                        label={m.player2?.globalPlayer.name ?? ""}
-                        name="player2Score"
-                        defaultValue={m.finalPlayer2Score ?? undefined}
-                      />
-                      <button
-                        type="submit"
-                        className="rounded-lg border border-neutral-200 bg-white/70 px-3 py-1.5 text-xs hover:bg-white"
-                      >
-                        บันทึก
-                      </button>
-                    </form>
-                  </details>
-                )}
-              </Card>
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }
@@ -541,6 +584,29 @@ function ScoreField({
         required
         className="mt-1 block w-24 rounded-lg border border-neutral-200 bg-white/70 px-2 py-1.5 text-sm outline-none focus:border-accent"
       />
+    </div>
+  );
+}
+
+function needsAttention(m: { status: string; byeClaimedById: string | null; player2Id: string | null }) {
+  return m.status === "CONFLICT" || (!!m.byeClaimedById && !!m.player2Id && m.status !== "CONFIRMED");
+}
+
+function RoundProgress({ done, total, attention }: { done: number; total: number; attention: number }) {
+  const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200/80">
+          <div className="h-full rounded-full bg-success transition-all" style={{ width: `${percent}%` }} />
+        </div>
+        <span className="shrink-0 text-xs font-medium text-neutral-700">
+          ยืนยันแล้ว {done}/{total} แมตช์
+        </span>
+      </div>
+      {attention > 0 && (
+        <p className="mt-1.5 text-xs font-medium text-danger">⚠ มี {attention} แมตช์ที่ต้องจัดการ (อยู่ด้านบนสุด)</p>
+      )}
     </div>
   );
 }

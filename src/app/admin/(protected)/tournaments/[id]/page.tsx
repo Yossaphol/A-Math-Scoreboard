@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getScoreboard, type ScoreboardRow } from "@/lib/scoreboard";
-import { getFirstSecondTotals } from "@/lib/pairing/first-second";
+import { getFirstSecondCounts } from "@/lib/pairing/first-second";
 import { startPairing, confirmPairing, cancelPreview } from "@/lib/actions/pairing";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
@@ -40,9 +40,9 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
 
   const rows = await getScoreboard(id);
   const statsByPlayer = new Map(rows.map((r) => [r.tournamentPlayerId, r]));
-  const firstSecondTotals = tournament.useFirstSecond
-    ? await getFirstSecondTotals(id)
-    : new Map<string, number>();
+  const firstSecondCounts = tournament.useFirstSecond
+    ? await getFirstSecondCounts(id)
+    : new Map<string, { first: number; second: number }>();
 
   const activePlayers =
     tournament.mode === "PRACTICE"
@@ -64,112 +64,190 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
       : null;
   const allRoundsPlayed = roundLimit != null && (lastRound?.roundNumber ?? 0) >= roundLimit;
 
+  const newRoundAction = !currentRound
+    ? allRoundsPlayed
+      ? <Badge variant="neutral">แข่งครบ {roundLimit} รอบแล้ว</Badge>
+      : (
+          <NewRoundModal
+            tournamentId={id}
+            defaultMaximumScore={tournament.defaultMaximumScore ?? 350}
+            action={startPairing}
+            mode={tournament.mode}
+            activePlayers={activePlayers.map((p) => ({
+              id: p.id,
+              tournamentPlayerNo: p.tournamentPlayerNo,
+              name: p.globalPlayer.name,
+            }))}
+          />
+        )
+    : null;
+
   return (
     <div>
-      <PageHeader
-        title="Scoreboard"
-        actions={
-          !currentRound &&
-          (allRoundsPlayed ? (
-            <Badge variant="neutral">แข่งครบ {roundLimit} รอบแล้ว</Badge>
-          ) : (
-            <NewRoundModal
-              tournamentId={id}
-              defaultMaximumScore={tournament.defaultMaximumScore ?? 350}
-              action={startPairing}
-              mode={tournament.mode}
-              activePlayers={activePlayers.map((p) => ({
-                id: p.id,
-                tournamentPlayerNo: p.tournamentPlayerNo,
-                name: p.globalPlayer.name,
-              }))}
-            />
-          ))
-        }
-      />
+      {/* The tab bar already says "Scoreboard" — no page title, just the round action. */}
+      {newRoundAction && <div className="mb-4 flex justify-end">{newRoundAction}</div>}
 
       {currentRound && isPreview && (
         <RoundPreviewSection round={currentRound} statsByPlayer={statsByPlayer} />
       )}
 
       {currentRound && !isPreview && (
-        <Card className="mb-6 flex items-center justify-between !bg-accent/5 border-accent/20">
-          <span className="text-sm text-neutral-700">
-            Round {currentRound.roundNumber} · {METHOD_LABEL[currentRound.pairingMethod ?? ""]} ·
-            กำลังแข่งขัน
-            {(() => {
-              const pending = currentRound.matches.filter(
-                (m) => m.status !== "CONFIRMED" && m.status !== "BYE"
-              ).length;
-              return pending > 0
-                ? ` — เหลือ ${pending} แมตช์ที่ยังไม่ Confirm ต้องยืนยันผลให้ครบก่อนถึงจะเปิด Round ถัดไปได้`
-                : "";
-            })()}
-          </span>
-          <Link
-            href={`/admin/tournaments/${currentRound.tournamentId}/rounds/${currentRound.id}`}
-            className="shrink-0 text-xs font-medium text-accent hover:underline"
-          >
-            ไปที่ Round {currentRound.roundNumber} →
-          </Link>
-        </Card>
+        <>
+          {/* Results arrive from the tables while the round is on — keep this page current. */}
+          <AutoRefresh intervalMs={8000} />
+          <LiveRoundBanner tournamentId={id} round={currentRound} />
+        </>
       )}
 
       {rows.length === 0 ? (
         <EmptyState title="ยังไม่มีผู้เล่น" />
       ) : (
         <Card padding="p-0" className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm tabular-nums">
             <thead>
               <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
-                <th className="py-3 pl-5 pr-3">#</th>
+                <th className="py-3 pl-5 pr-3">อันดับ</th>
                 <th className="py-3 pr-3">Name</th>
                 <th className="py-3 pr-3 text-right">Points</th>
-                <th className="py-3 pr-3 text-center">W</th>
-                <th className="py-3 pr-3 text-center">T</th>
-                <th className="py-3 pr-3 text-center">L</th>
+                <th className="py-3 pr-3 text-center">W/T/L</th>
                 <th className="py-3 pr-3 text-right">คะแนนที่ทำได้</th>
                 <th className="py-3 pr-3 text-right">คะแนนคู่ต่อสู้</th>
                 <th className="py-3 pr-3 text-right">Diff</th>
                 {tournament.useFirstSecond && (
-                  <th className="py-3 pr-3 text-right">First/Second</th>
+                  <th className="py-3 pr-5 text-center" title="จำนวนเกมที่ได้เริ่มก่อน / เริ่มหลัง">
+                    First/Second
+                  </th>
                 )}
-                <th className="py-3 pr-5">Status</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.tournamentPlayerId} className="border-b border-neutral-100 last:border-0">
-                  <td className="py-3 pl-5 pr-3 text-neutral-500">{r.rank}</td>
-                  <td className="py-3 pr-3">
-                    {r.name}
-                    <span className="text-neutral-400">(#{r.tournamentPlayerNo})</span>
-                  </td>
-                  <td className="py-3 pr-3 text-right font-medium">{r.points}</td>
-                  <td className="py-3 pr-3 text-center">{r.wins}</td>
-                  <td className="py-3 pr-3 text-center">{r.ties}</td>
-                  <td className="py-3 pr-3 text-center">{r.losses}</td>
-                  <td className="py-3 pr-3 text-right">{r.ownScoreTotal}</td>
-                  <td className="py-3 pr-3 text-right">{r.opponentScoreTotal}</td>
-                  <td className="py-3 pr-3 text-right">
-                    {r.cumulativeDiff > 0 ? `+${r.cumulativeDiff}` : r.cumulativeDiff}
-                  </td>
-                  {tournament.useFirstSecond && (
-                    <td className="py-3 pr-3 text-right">
-                      {firstSecondTotals.get(r.tournamentPlayerId) ?? 0}
+              {rows.map((r) => {
+                const fs = firstSecondCounts.get(r.tournamentPlayerId);
+                return (
+                  <tr
+                    key={r.tournamentPlayerId}
+                    className={`border-b border-neutral-100 last:border-0 ${
+                      r.gamesPlayed === 0 || r.status === "WITHDRAWN" ? "text-neutral-400" : ""
+                    }`}
+                  >
+                    <td className="py-3 pl-5 pr-3 text-neutral-500">{r.rank}</td>
+                    <td className="py-3 pr-3">
+                      {r.name}
+                      <span className="ml-1 text-neutral-400">(#{r.tournamentPlayerNo})</span>
+                      {r.status === "WITHDRAWN" && (
+                        <Badge variant="neutral" className="ml-2">
+                          Withdrawn
+                        </Badge>
+                      )}
                     </td>
-                  )}
-                  <td className="py-3 pr-5">
-                    {r.status === "WITHDRAWN" && <Badge variant="neutral">Withdrawn</Badge>}
-                  </td>
-                </tr>
-              ))}
+                    <td className="py-3 pr-3 text-right font-medium">{r.points}</td>
+                    <td className="whitespace-nowrap py-3 pr-3 text-center">
+                      {r.wins}
+                      <span className="mx-0.5 text-neutral-300">/</span>
+                      {r.ties}
+                      <span className="mx-0.5 text-neutral-300">/</span>
+                      {r.losses}
+                    </td>
+                    <td className="py-3 pr-3 text-right">{r.ownScoreTotal}</td>
+                    <td className="py-3 pr-3 text-right">{r.opponentScoreTotal}</td>
+                    <td className="py-3 pr-3 text-right">
+                      {r.cumulativeDiff > 0 ? `+${r.cumulativeDiff}` : r.cumulativeDiff}
+                    </td>
+                    {tournament.useFirstSecond && (
+                      <td className="whitespace-nowrap py-3 pr-5 text-center">
+                        {fs?.first ?? 0}
+                        <span className="mx-0.5 text-neutral-300">/</span>
+                        {fs?.second ?? 0}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Card>
       )}
     </div>
   );
+}
+
+type LiveRound = {
+  id: string;
+  roundNumber: number;
+  pairingMethod: string | null;
+  matches: {
+    id: string;
+    status: string;
+    isBye: boolean;
+    byeClaimedById: string | null;
+    table: { tableNumber: number } | null;
+    player1: { globalPlayer: { name: string } };
+    player2: { globalPlayer: { name: string } } | null;
+  }[];
+};
+
+// The in-progress round at a glance: how many games are in, and every match that needs
+// Admin/Staff (score conflict, "opponent didn't show" report) with a link straight to it.
+function LiveRoundBanner({ tournamentId, round }: { tournamentId: string; round: LiveRound }) {
+  const roundHref = `/admin/tournaments/${tournamentId}/rounds/${round.id}`;
+  const total = round.matches.length;
+  const done = round.matches.filter((m) => m.status === "CONFIRMED" || m.status === "BYE").length;
+  const issues = round.matches
+    .map((m) => ({ m, issue: matchIssue(m) }))
+    .filter((x): x is { m: LiveRound["matches"][number]; issue: string } => x.issue != null)
+    .sort((a, b) => (a.m.table?.tableNumber ?? Infinity) - (b.m.table?.tableNumber ?? Infinity));
+  const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+
+  return (
+    <Card className={`mb-6 ${issues.length > 0 ? "!bg-red-50/60 border-red-200" : "!bg-accent/5 border-accent/20"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm text-neutral-700">
+          Round {round.roundNumber} · {METHOD_LABEL[round.pairingMethod ?? ""]} · กำลังแข่งขัน
+        </span>
+        <Link href={roundHref} className="shrink-0 text-xs font-medium text-accent hover:underline">
+          ไปที่ Round {round.roundNumber} →
+        </Link>
+      </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-200/80">
+          <div className="h-full rounded-full bg-success transition-all" style={{ width: `${percent}%` }} />
+        </div>
+        <span className="shrink-0 text-xs font-medium text-neutral-700">
+          ยืนยันแล้ว {done}/{total} แมตช์
+        </span>
+      </div>
+      {done < total && (
+        <p className="mt-1 text-[11px] text-neutral-500">ต้องยืนยันผลให้ครบก่อนถึงจะเปิด Round ถัดไปได้</p>
+      )}
+
+      {issues.length > 0 && (
+        <ul className="mt-3 space-y-1.5">
+          {issues.map(({ m, issue }) => (
+            <li key={m.id}>
+              <Link
+                href={`${roundHref}#match-${m.id}`}
+                className="flex flex-wrap items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs hover:bg-white"
+              >
+                <Badge variant="danger">{issue}</Badge>
+                <span className="text-neutral-500">{m.table ? `โต๊ะ ${m.table.tableNumber}` : "—"}</span>
+                <span className="font-medium text-neutral-800">
+                  {m.player1.globalPlayer.name} vs {m.player2?.globalPlayer.name}
+                </span>
+                <span className="ml-auto text-accent">จัดการ →</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function matchIssue(m: LiveRound["matches"][number]): string | null {
+  if (m.status === "CONFLICT") return "ผลขัดแย้ง";
+  if (m.byeClaimedById && m.player2 && m.status !== "CONFIRMED") return "แจ้งว่าคู่ไม่มา";
+  return null;
 }
 
 type PreviewRound = {

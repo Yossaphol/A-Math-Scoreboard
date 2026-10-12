@@ -22,3 +22,9 @@ export async function ensureTableCount(tx: Prisma.TransactionClient, tournamentI
     })),
   });
 }
+
+/** Absolute URL a table's QR encodes — shared by the Tables page and the QR zip download. */
+export function tableQrUrl(qrToken: string) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${baseUrl}/table/${qrToken}`;
+}

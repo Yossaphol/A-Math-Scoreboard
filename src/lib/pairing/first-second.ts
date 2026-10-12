@@ -1,9 +1,10 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 
-// Spec §11: First = 2, Second = 1, accumulated across all CONFIRMED games. Whoever has the
-// higher total gets First next time (balances out who starts first/second).
-export async function getFirstSecondTotals(tournamentId: string): Promise<Map<string, number>> {
+// How many CONFIRMED games each player started First / Second — what the Scoreboard shows.
+export async function getFirstSecondCounts(
+  tournamentId: string
+): Promise<Map<string, { first: number; second: number }>> {
   const matches = await prisma.match.findMany({
     where: {
       round: { tournamentId },
@@ -14,12 +15,24 @@ export async function getFirstSecondTotals(tournamentId: string): Promise<Map<st
     select: { firstPlayerId: true, secondPlayerId: true },
   });
 
-  const totals = new Map<string, number>();
+  const counts = new Map<string, { first: number; second: number }>();
+  const entry = (id: string) => {
+    let c = counts.get(id);
+    if (!c) counts.set(id, (c = { first: 0, second: 0 }));
+    return c;
+  };
   for (const m of matches) {
-    if (m.firstPlayerId) totals.set(m.firstPlayerId, (totals.get(m.firstPlayerId) ?? 0) + 2);
-    if (m.secondPlayerId) totals.set(m.secondPlayerId, (totals.get(m.secondPlayerId) ?? 0) + 1);
+    if (m.firstPlayerId) entry(m.firstPlayerId).first += 1;
+    if (m.secondPlayerId) entry(m.secondPlayerId).second += 1;
   }
-  return totals;
+  return counts;
+}
+
+// Spec §11: First = 2, Second = 1, accumulated across all CONFIRMED games. Whoever has the
+// higher total gets First next time (balances out who starts first/second).
+export async function getFirstSecondTotals(tournamentId: string): Promise<Map<string, number>> {
+  const counts = await getFirstSecondCounts(tournamentId);
+  return new Map([...counts].map(([id, c]) => [id, c.first * 2 + c.second]));
 }
 
 export function assignFirstSecond(
