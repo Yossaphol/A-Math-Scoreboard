@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
-import type { RefereeCallView } from "@/lib/referee-calls";
+import type { MatchEventView, RefereeCallView } from "@/lib/referee-calls";
 import { acknowledgeRefereeCall, resolveRefereeCall } from "@/lib/actions/referee-calls";
 import { Button } from "@/components/ui/Button";
 import { dismissAlertsWhere, showAlert } from "./store";
@@ -21,9 +21,10 @@ const alertId = (callId: string) => `${ALERT_PREFIX}${callId}`;
 const timeFormat = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" });
 
 /**
- * Referee side of the table's "เรียกกรรมการ" button: listens to the open-call stream and
- * pops each call up top-right with a chime until someone takes it. Mounted for Admin/Staff
- * only (admin shell + public site when signed in as Staff/Admin).
+ * Admin/Staff live feed. Referee side of the table's "เรียกกรรมการ" button: pops each open
+ * call up top-right with a chime until someone takes it. Also relays results the players
+ * confirm (or disagree on) at their tables. Mounted for Admin/Staff only (admin shell +
+ * public site when signed in as Staff/Admin).
  */
 export function RefereeCallAlerts() {
   // Calls this screen's referee closed with ✕ — they stay closed even as the stream keeps
@@ -36,6 +37,9 @@ export function RefereeCallAlerts() {
     let lastMessageAt = 0;
     let retryDelay = 1000;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // Last match-event id seen, so a stream this page reopens itself picks up where it left off.
+    let matchCursor: string | null = null;
+    const seenMatchEvents = new Set<string>();
 
     const onCalls = (event: MessageEvent<string>) => {
       lastMessageAt = Date.now();
@@ -62,6 +66,35 @@ export function RefereeCallAlerts() {
       dismissAlertsWhere((id) => id.startsWith(ALERT_PREFIX) && !live.has(id));
     };
 
+    // Results players settled at their tables. The player-side alert only reaches the phone that
+    // sent it, so this is how Admin/Staff hear about them — same wording, plus where it was.
+    const onMatches = (event: MessageEvent<string>) => {
+      lastMessageAt = Date.now();
+      if (event.lastEventId) matchCursor = event.lastEventId;
+      for (const m of JSON.parse(event.data) as MatchEventView[]) {
+        if (seenMatchEvents.has(m.key)) continue;
+        seenMatchEvents.add(m.key);
+        const where = [
+          m.roundNumber != null ? `Round ${m.roundNumber}` : null,
+          m.tableNumber != null ? `Table ${m.tableNumber}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        // Keyed per match, so "ผลไม่ตรงกัน" turns into "ยืนยันผลแล้ว" once the players fix it.
+        const id = `admin-match-${m.matchId}`;
+        if (m.status === "CONFLICT") {
+          showAlert({ id, type: "warning", title: "ผลไม่ตรงกัน", description: `${where} · ${m.player1} vs ${m.player2}` });
+        } else {
+          showAlert({
+            id,
+            type: m.tie ? "warning" : "success",
+            title: m.tie ? "ผลเสมอ — ให้กรรมการตรวจ" : "ยืนยันผลแล้ว",
+            description: `${where} · ${m.player1} ${m.player1Score} – ${m.player2Score} ${m.player2}`,
+          });
+        }
+      }
+    };
+
     // EventSource reconnects by itself after a dropped connection, but gives up for good on
     // an error response (a deploy, a blip on the server), and a half-open connection can go
     // quiet without erroring at all. The server pings at least every 15s, so silence well
@@ -69,8 +102,10 @@ export function RefereeCallAlerts() {
     const connect = () => {
       source?.close();
       lastMessageAt = Date.now();
-      source = new EventSource("/api/referee-calls/stream");
+      const query = matchCursor ? `?since=${encodeURIComponent(matchCursor)}` : "";
+      source = new EventSource(`/api/referee-calls/stream${query}`);
       source.addEventListener("calls", onCalls as EventListener);
+      source.addEventListener("matches", onMatches as EventListener);
       source.addEventListener("ping", () => (lastMessageAt = Date.now()));
       source.onopen = () => (lastMessageAt = Date.now());
       source.onerror = () => {

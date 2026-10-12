@@ -65,3 +65,73 @@ export async function listOpenRefereeCalls(user: { id: string; role: Role }): Pr
     handledByName: c.handledBy ? c.handledBy.name || c.handledBy.email : null,
   }));
 }
+
+/** A table result the players settled (or disagreed on) by themselves — see listMatchEvents. */
+export type MatchEventView = {
+  key: string;
+  matchId: string;
+  status: "CONFIRMED" | "CONFLICT";
+  updatedAt: string;
+  tournamentName: string;
+  roundNumber: number | null;
+  tableNumber: number | null;
+  player1: string;
+  player2: string;
+  player1Score: number | null;
+  player2Score: number | null;
+  tie: boolean;
+};
+
+/**
+ * Results players confirmed — or submitted mismatched — at a table since `since`, so Admin/Staff
+ * screens hear about them too (the player-side alert only ever reaches the phone that sent it).
+ * Round matches only: practice self-service games are logged far too often to pop up one by
+ * one. Admin-entered results are skipped — whoever saved one already got their own alert.
+ */
+export async function listMatchEvents(
+  user: { id: string; role: Role },
+  since: Date
+): Promise<MatchEventView[]> {
+  const matches = await prisma.match.findMany({
+    where: {
+      updatedAt: { gt: since },
+      roundId: { not: null },
+      isBye: false,
+      editedByAdminId: null,
+      status: { in: ["CONFIRMED", "CONFLICT"] },
+      ...(user.role === "ADMIN"
+        ? {}
+        : { tournament: { staff: { some: { userId: user.id, status: "ACTIVE" } } } }),
+    },
+    orderBy: { updatedAt: "asc" },
+    take: 50,
+    select: {
+      id: true,
+      status: true,
+      updatedAt: true,
+      finalPlayer1Score: true,
+      finalPlayer2Score: true,
+      player1Result: true,
+      tournament: { select: { name: true } },
+      round: { select: { roundNumber: true } },
+      table: { select: { tableNumber: true } },
+      player1: { select: { globalPlayer: { select: { name: true } } } },
+      player2: { select: { globalPlayer: { select: { name: true } } } },
+    },
+  });
+
+  return matches.map((m) => ({
+    key: `${m.id}:${m.status}:${m.updatedAt.getTime()}`,
+    matchId: m.id,
+    status: m.status as MatchEventView["status"],
+    updatedAt: m.updatedAt.toISOString(),
+    tournamentName: m.tournament.name,
+    roundNumber: m.round?.roundNumber ?? null,
+    tableNumber: m.table?.tableNumber ?? null,
+    player1: m.player1.globalPlayer.name,
+    player2: m.player2?.globalPlayer.name ?? "",
+    player1Score: m.finalPlayer1Score,
+    player2Score: m.finalPlayer2Score,
+    tie: m.status === "CONFIRMED" && m.player1Result === "TIE",
+  }));
+}

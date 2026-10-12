@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
-import { listOpenRefereeCalls } from "@/lib/referee-calls";
+import { listMatchEvents, listOpenRefereeCalls } from "@/lib/referee-calls";
 
-// Live feed of open referee calls for Admin/Staff screens (Server-Sent Events). The DB is
+// Live feed for Admin/Staff screens (Server-Sent Events): open referee calls, plus results
+// players confirm or disagree on at their tables. The DB is
 // reached through a connection pooler, so there's no LISTEN/NOTIFY to push from — instead
 // each open stream checks once a second and only sends when something changed, which keeps
 // a new call on the referee's screen within about a second of the tap at the table.
@@ -10,6 +11,20 @@ const HEARTBEAT_MS = 15_000;
 // End each stream well inside the function's max duration; EventSource reconnects on its own
 // (after the `retry` delay below), which also re-checks the session.
 const STREAM_LIFETIME_MS = 240_000;
+// Match results: re-read a few seconds back each time, so a result whose transaction committed
+// just after a poll (with an earlier updatedAt) isn't skipped — duplicates are filtered out.
+const MATCH_OVERLAP_MS = 5_000;
+// How far back a reconnecting screen may ask to catch up.
+const MAX_CATCH_UP_MS = 5 * 60_000;
+
+// Where to resume the match feed: the last event id this screen saw (sent by EventSource as
+// Last-Event-ID on its own reconnects, or as ?since= when the page reopens the stream itself).
+function resumePoint(request: Request) {
+  const raw = request.headers.get("last-event-id") ?? new URL(request.url).searchParams.get("since");
+  const at = raw ? new Date(raw) : null;
+  const floor = Date.now() - MAX_CATCH_UP_MS;
+  return at && !Number.isNaN(at.getTime()) ? new Date(Math.max(at.getTime(), floor)) : new Date();
+}
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -26,6 +41,8 @@ export async function GET(request: Request) {
       const startedAt = Date.now();
       let lastPayload = "";
       let lastSentAt = 0;
+      let matchCursor = resumePoint(request);
+      const sentMatchEvents = new Set<string>();
       const send = (chunk: string) => {
         controller.enqueue(encoder.encode(chunk));
         lastSentAt = Date.now();
@@ -40,6 +57,15 @@ export async function GET(request: Request) {
             lastPayload = payload;
           } else if (Date.now() - lastSentAt > HEARTBEAT_MS) {
             send("event: ping\ndata: \n\n");
+          }
+
+          const since = new Date(matchCursor.getTime() - MATCH_OVERLAP_MS);
+          const events = (await listMatchEvents(user, since)).filter((e) => !sentMatchEvents.has(e.key));
+          if (events.length > 0) {
+            events.forEach((e) => sentMatchEvents.add(e.key));
+            const latest = new Date(events[events.length - 1].updatedAt);
+            if (latest > matchCursor) matchCursor = latest;
+            send(`id: ${matchCursor.toISOString()}\nevent: matches\ndata: ${JSON.stringify(events)}\n\n`);
           }
           await new Promise((resolve) => setTimeout(resolve, POLL_MS));
         }
