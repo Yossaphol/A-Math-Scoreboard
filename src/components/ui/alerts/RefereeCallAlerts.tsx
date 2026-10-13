@@ -7,7 +7,9 @@ import { acknowledgeRefereeCall, resolveRefereeCall } from "@/lib/actions/refere
 import { Button } from "@/components/ui/Button";
 import { dismissAlertsWhere, showAlert } from "./store";
 import { isAudioUnlocked, playAlertChime, subscribeAudioState, unlockAudio } from "./sound";
-import { isRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
+import { isRefereeSoundMuted, subscribeRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
+import { getDeviceId, setOnlineStaff } from "./presence-store";
+import type { OnlineStaff } from "@/lib/presence";
 
 // Keeps ringing (one ~1s chime, then a short gap) for as long as any call on this screen is
 // still OPEN — it stops once a referee taps "รับเรื่อง" or closes the card with ✕.
@@ -102,8 +104,14 @@ export function RefereeCallAlerts() {
     const connect = () => {
       source?.close();
       lastMessageAt = Date.now();
-      const query = matchCursor ? `?since=${encodeURIComponent(matchCursor)}` : "";
-      source = new EventSource(`/api/referee-calls/stream${query}`);
+      // device + muted feed this screen's "who's online" row (lib/presence.ts).
+      const query = new URLSearchParams({ device: getDeviceId(), muted: isRefereeSoundMuted() ? "1" : "0" });
+      if (matchCursor) query.set("since", matchCursor);
+      source = new EventSource(`/api/referee-calls/stream?${query}`);
+      source.addEventListener("presence", (event) => {
+        lastMessageAt = Date.now();
+        setOnlineStaff(JSON.parse((event as MessageEvent<string>).data) as OnlineStaff[]);
+      });
       source.addEventListener("calls", onCalls as EventListener);
       source.addEventListener("matches", onMatches as EventListener);
       source.addEventListener("ping", () => (lastMessageAt = Date.now()));
@@ -126,6 +134,8 @@ export function RefereeCallAlerts() {
     };
 
     connect();
+    // Reopen with the new setting so others see this screen's sound on/off right away.
+    const unsubscribeMuted = subscribeRefereeSoundMuted(connect);
     const watchdog = setInterval(ensureAlive, 5000);
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -136,6 +146,7 @@ export function RefereeCallAlerts() {
 
     return () => {
       source?.close();
+      unsubscribeMuted();
       if (retryTimer) clearTimeout(retryTimer);
       clearInterval(watchdog);
       clearInterval(ringer);

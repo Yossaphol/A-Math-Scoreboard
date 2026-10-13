@@ -3,6 +3,7 @@ import { logoutAction } from "@/lib/actions/auth";
 import { Badge } from "@/components/ui/Badge";
 import { buttonBase, SIZES, VARIANTS } from "@/components/ui/Button";
 import { AdminNav, type NavGroup } from "@/components/admin/AdminNav";
+import { OnlineStaffButton } from "@/components/admin/OnlineStaffButton";
 import { NotificationBell } from "@/components/ui/alerts/NotificationBell";
 import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
 import Link from "next/link";
@@ -118,6 +119,10 @@ export default async function AdminProtectedLayout({
               </button>
             </form>
           </div>
+        </div>
+
+        <div className="px-4 pb-2 md:pb-0 md:pt-3">
+          <OnlineStaffButton currentUserId={user.id} />
         </div>
 
         <AdminNav groups={nav} />

@@ -19,10 +19,14 @@ export async function getOpenRefereeCall(qrToken: string) {
 export function RefereeCallBar({
   qrToken,
   call,
+  onlineReferees,
 }: {
   qrToken: string;
   call: { id: string; status: string } | null;
+  // Admin/Staff of this tournament with an admin screen open (lib/presence.ts).
+  onlineReferees: number;
 }) {
+  const nobodyOnline = onlineReferees === 0;
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200/70 bg-white/85 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
       <div className="mx-auto max-w-md">
@@ -42,7 +46,11 @@ export function RefereeCallBar({
                 <p className="text-sm font-semibold text-neutral-900">
                   {call.status === "OPEN" ? "กำลังเรียกกรรมการ…" : "กรรมการรับเรื่องแล้ว กำลังมา"}
                 </p>
-                <p className="text-xs text-neutral-500">รอที่โต๊ะได้เลย</p>
+                <p className={`text-xs ${nobodyOnline && call.status === "OPEN" ? "text-warning" : "text-neutral-500"}`}>
+                  {nobodyOnline && call.status === "OPEN"
+                    ? "ตอนนี้ไม่มีกรรมการเปิดจออยู่ — ถ้าด่วน เดินไปแจ้งที่โต๊ะกรรมการ"
+                    : "รอที่โต๊ะได้เลย"}
+                </p>
               </div>
               <form action={cancelRefereeCall}>
                 <input type="hidden" name="qrToken" value={qrToken} />
@@ -71,6 +79,18 @@ export function RefereeCallBar({
               </svg>
               เรียกกรรมการ
             </SubmitButton>
+            <p
+              className={`mt-1.5 flex items-center justify-center gap-1.5 text-[11px] ${nobodyOnline ? "text-warning" : "text-neutral-500"}`}
+            >
+              {nobodyOnline ? (
+                "⚠ ตอนนี้ไม่มีกรรมการเปิดจออยู่ — ถ้าด่วน เดินไปแจ้งที่โต๊ะกรรมการ"
+              ) : (
+                <>
+                  <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
+                  กรรมการออนไลน์ {onlineReferees} คน
+                </>
+              )}
+            </p>
           </form>
         )}
       </div>

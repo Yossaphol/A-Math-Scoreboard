@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { listMatchEvents, listOpenRefereeCalls } from "@/lib/referee-calls";
+import { forgetStalePresence, listOnlineStaff, PRESENCE_TOUCH_MS, touchPresence } from "@/lib/presence";
 
 // Live feed for Admin/Staff screens (Server-Sent Events): open referee calls, plus results
 // players confirm or disagree on at their tables. The DB is
@@ -17,6 +18,9 @@ const MATCH_OVERLAP_MS = 5_000;
 // How far back a reconnecting screen may ask to catch up.
 const MAX_CATCH_UP_MS = 5 * 60_000;
 
+// The "who's online" list changes slowly — no need to re-read it every tick.
+const PRESENCE_LIST_MS = 5_000;
+
 // Where to resume the match feed: the last event id this screen saw (sent by EventSource as
 // Last-Event-ID on its own reconnects, or as ?since= when the page reopens the stream itself).
 function resumePoint(request: Request) {
@@ -32,6 +36,13 @@ export async function GET(request: Request) {
   if (!user || (user.role !== "ADMIN" && user.role !== "STAFF")) {
     return new Response("Unauthorized", { status: 401 });
   }
+
+  // This screen's presence row (see lib/presence.ts): a random id the page keeps, plus whether
+  // it has the referee chime muted. A stream without an id just isn't counted as online.
+  const params = new URL(request.url).searchParams;
+  const rawDevice = params.get("device") ?? "";
+  const deviceId = /^[A-Za-z0-9-]{8,64}$/.test(rawDevice) ? rawDevice : null;
+  const soundMuted = params.get("muted") === "1";
 
   const encoder = new TextEncoder();
   // Set when the client goes away, so a closed tab doesn't keep querying until the next write.
@@ -49,7 +60,11 @@ export async function GET(request: Request) {
       };
 
       send("retry: 1000\n\n");
+      let lastTouch = 0;
+      let lastPresenceRead = 0;
+      let lastPresence = "";
       try {
+        if (deviceId) await forgetStalePresence();
         while (!cancelled && !request.signal.aborted && Date.now() - startedAt < STREAM_LIFETIME_MS) {
           const payload = JSON.stringify(await listOpenRefereeCalls(user));
           if (payload !== lastPayload) {
@@ -57,6 +72,19 @@ export async function GET(request: Request) {
             lastPayload = payload;
           } else if (Date.now() - lastSentAt > HEARTBEAT_MS) {
             send("event: ping\ndata: \n\n");
+          }
+
+          if (deviceId && Date.now() - lastTouch >= PRESENCE_TOUCH_MS) {
+            await touchPresence(user.id, deviceId, soundMuted);
+            lastTouch = Date.now();
+          }
+          if (Date.now() - lastPresenceRead >= PRESENCE_LIST_MS) {
+            const presence = JSON.stringify(await listOnlineStaff(user));
+            lastPresenceRead = Date.now();
+            if (presence !== lastPresence) {
+              send(`event: presence\ndata: ${presence}\n\n`);
+              lastPresence = presence;
+            }
           }
 
           const since = new Date(matchCursor.getTime() - MATCH_OVERLAP_MS);

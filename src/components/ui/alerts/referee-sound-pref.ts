@@ -29,7 +29,7 @@ export function setRefereeSoundMuted(next: boolean) {
   listeners.forEach((l) => l());
 }
 
-function subscribe(listener: () => void) {
+export function subscribeRefereeSoundMuted(listener: () => void) {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
@@ -37,5 +37,5 @@ function subscribe(listener: () => void) {
 }
 
 export function useRefereeSoundMuted() {
-  return useSyncExternalStore(subscribe, isRefereeSoundMuted, () => false);
+  return useSyncExternalStore(subscribeRefereeSoundMuted, isRefereeSoundMuted, () => false);
 }

@@ -89,6 +89,7 @@ model User {
   editedMatches       Match[]           @relation("MatchEditedByAdmin")
   auditLogs           AuditLog[]
   refereeCallsHandled RefereeCall[]
+  presence            StaffPresence[]
 }
 
 // Global Player ID — stable identity for a player across every tournament (spec §1).
@@ -399,4 +400,20 @@ model RefereeCall {
 
   @@index([status, tournamentId])
   @@index([tableId, status])
+}
+
+// "Who's on duty right now": one row per Admin/Staff device with the admin live stream open
+// (src/app/api/referee-calls/stream), touched every ~30s while it stays open. Online = seen in
+// the last 45s. Per device rather than per user, so "sound off" is only shown when every open
+// screen of that person has the referee chime muted.
+model StaffPresence {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Random id the browser keeps in localStorage — not a fingerprint, just "this screen".
+  deviceId   String
+  soundMuted Boolean  @default(false)
+  lastSeenAt DateTime
+
+  @@id([userId, deviceId])
+  @@index([lastSeenAt])
 }

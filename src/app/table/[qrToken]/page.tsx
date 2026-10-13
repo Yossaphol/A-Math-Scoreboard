@@ -10,14 +10,21 @@ import { Card } from "@/components/ui/Card";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { RefereeCallBar, getOpenRefereeCall } from "@/components/match/RefereeCallBar";
+import { prisma } from "@/lib/prisma";
+import { countOnlineReferees } from "@/lib/presence";
 
 const RESULT_LABEL: Record<string, string> = { WIN: "ชนะ", TIE: "เสมอ", LOSS: "แพ้" };
 
 export default async function TableMatchPage(props: PageProps<"/table/[qrToken]">) {
   const { qrToken } = await props.params;
   const { side: sideParam } = await props.searchParams;
-  const [result, refereeCall] = await Promise.all([getActiveMatchForTable(qrToken), getOpenRefereeCall(qrToken)]);
-  const refereeBar = <RefereeCallBar qrToken={qrToken} call={refereeCall} />;
+  const [result, refereeCall, tableRow] = await Promise.all([
+    getActiveMatchForTable(qrToken),
+    getOpenRefereeCall(qrToken),
+    prisma.tournamentTable.findUnique({ where: { qrToken }, select: { tournamentId: true } }),
+  ]);
+  const onlineReferees = tableRow ? await countOnlineReferees(tableRow.tournamentId) : 0;
+  const refereeBar = <RefereeCallBar qrToken={qrToken} call={refereeCall} onlineReferees={onlineReferees} />;
 
   if ("error" in result) {
     // Confirming the last open match of a round completes the round right away — keep
