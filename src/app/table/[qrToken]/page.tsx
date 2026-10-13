@@ -12,19 +12,25 @@ import { SubmitButton } from "@/components/ui/SubmitButton";
 import { RefereeCallBar, getOpenRefereeCall } from "@/components/match/RefereeCallBar";
 import { prisma } from "@/lib/prisma";
 import { countOnlineReferees } from "@/lib/presence";
+import { getSystemSettings } from "@/lib/system-settings";
 
 const RESULT_LABEL: Record<string, string> = { WIN: "ชนะ", TIE: "เสมอ", LOSS: "แพ้" };
 
 export default async function TableMatchPage(props: PageProps<"/table/[qrToken]">) {
   const { qrToken } = await props.params;
   const { side: sideParam } = await props.searchParams;
-  const [result, refereeCall, tableRow] = await Promise.all([
+  const [result, openCall, tableRow, { liveFeedEnabled }] = await Promise.all([
     getActiveMatchForTable(qrToken),
     getOpenRefereeCall(qrToken),
     prisma.tournamentTable.findUnique({ where: { qrToken }, select: { tournamentId: true } }),
+    getSystemSettings(),
   ]);
-  const onlineReferees = tableRow ? await countOnlineReferees(tableRow.tournamentId) : 0;
-  const refereeBar = <RefereeCallBar qrToken={qrToken} call={refereeCall} onlineReferees={onlineReferees} />;
+  // With the live feed off (/admin/settings) no referee screen would hear a call — no button.
+  const refereeCall = liveFeedEnabled ? openCall : null;
+  const onlineReferees = liveFeedEnabled && tableRow ? await countOnlineReferees(tableRow.tournamentId) : 0;
+  const refereeBar = liveFeedEnabled ? (
+    <RefereeCallBar qrToken={qrToken} call={refereeCall} onlineReferees={onlineReferees} />
+  ) : null;
 
   if ("error" in result) {
     // Confirming the last open match of a round completes the round right away — keep

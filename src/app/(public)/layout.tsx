@@ -4,6 +4,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { UserMenu } from "@/components/account/UserMenu";
 import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
 import { getInbox, getStaffTournaments } from "@/lib/notifications";
+import { getSystemSettings } from "@/lib/system-settings";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -11,6 +12,7 @@ export default async function PublicLayout({ children }: { children: React.React
   const [inbox, staffTournaments] = session?.user
     ? await Promise.all([getInbox(session.user.id), getStaffTournaments(session.user.id)])
     : [{ items: [], unread: 0 }, []];
+  const liveFeedEnabled = isStaffOrAdmin && (await getSystemSettings()).liveFeedEnabled;
 
   return (
     <div className="min-h-screen">
@@ -36,7 +38,7 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
       </header>
       {children}
-      {isStaffOrAdmin && <RefereeCallAlerts />}
+      {liveFeedEnabled && <RefereeCallAlerts />}
     </div>
   );
 }

@@ -88,6 +88,10 @@ ongoing/confirmed = green, completed = gray, ADMIN = red, STAFF = blue (`info` v
   because `prisma migrate deploy` takes a Postgres advisory lock, which transaction pooling
   can't hold. The app keeps using the transaction pooler. The Marketplace integration also
   adds `POSTGRES_*`/`SUPABASE_*` env vars; the app doesn't read them.
+- **Live feed switch**: `/admin/settings` (Admin only) turns the Admin/Staff live feed
+  (`/api/referee-calls/stream`, ~2-3 queries/second per open screen) off system-wide between
+  events — open screens stop within 30s and table pages hide "เรียกกรรมการ". Independently, a
+  screen hidden for 10 minutes drops its stream until it's shown again.
 - **Why the region pin matters**: Vercel's default function region (`iad1`, US East) and the
   database region (`ap-southeast-1`, Singapore) being different was the root cause of a real
   production slowness issue — every DB round trip crossed the Pacific. `vercel.json`'s

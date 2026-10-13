@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { assertTournamentAccess } from "@/lib/dal";
 import { getActiveMatchForTable, getLastFinishedMatchForTable } from "@/lib/match/lookup";
 import { OPEN_REFEREE_CALL_STATUSES } from "@/lib/referee-calls";
+import { getSystemSettings } from "@/lib/system-settings";
+import { setFlash } from "@/lib/flash";
 
 const tableSchema = z.object({ qrToken: z.string().min(1) });
 
@@ -15,6 +17,13 @@ export async function callReferee(formData: FormData) {
   const parsed = tableSchema.safeParse({ qrToken: formData.get("qrToken") });
   if (!parsed.success) throw new Error("ข้อมูลไม่ครบ");
   const { qrToken } = parsed.data;
+
+  // A page loaded before an Admin switched the live feed off can still post here.
+  if (!(await getSystemSettings()).liveFeedEnabled) {
+    await setFlash({ type: "warning", title: "ตอนนี้ปิดระบบเรียกกรรมการอยู่", description: "เดินไปแจ้งที่โต๊ะกรรมการได้เลย" });
+    revalidatePath(`/table/${qrToken}`);
+    return;
+  }
 
   const table = await prisma.tournamentTable.findUnique({ where: { qrToken } });
   if (!table) throw new Error("ไม่พบโต๊ะนี้");

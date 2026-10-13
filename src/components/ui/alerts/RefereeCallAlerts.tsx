@@ -18,6 +18,11 @@ const RING_EVERY_MS = 2_000;
 // The server pings every 15s even when nothing changes — this much silence means a dead stream.
 const STALE_STREAM_MS = 35_000;
 
+// A tab nobody has looked at for this long (another tab in front, minimized, phone locked)
+// drops its stream so a forgotten screen doesn't keep the database busy; it reconnects the
+// moment the tab is shown again, and open calls come straight back with the first message.
+const HIDDEN_PAUSE_MS = 10 * 60_000;
+
 const ALERT_PREFIX = "referee-";
 const alertId = (callId: string) => `${ALERT_PREFIX}${callId}`;
 const timeFormat = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" });
@@ -39,6 +44,11 @@ export function RefereeCallAlerts() {
     let lastMessageAt = 0;
     let retryDelay = 1000;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // paused: dropped while the tab was hidden (resumes when shown). stopped: an Admin switched
+    // the live feed off at /admin/settings — stays off until the layout remounts this.
+    let paused = false;
+    let stopped = false;
+    let hiddenTimer: ReturnType<typeof setTimeout> | null = null;
     // Last match-event id seen, so a stream this page reopens itself picks up where it left off.
     let matchCursor: string | null = null;
     const seenMatchEvents = new Set<string>();
@@ -115,9 +125,16 @@ export function RefereeCallAlerts() {
       source.addEventListener("calls", onCalls as EventListener);
       source.addEventListener("matches", onMatches as EventListener);
       source.addEventListener("ping", () => (lastMessageAt = Date.now()));
+      source.addEventListener("disabled", () => {
+        stopped = true;
+        source?.close();
+        dismissAlertsWhere((id) => id.startsWith(ALERT_PREFIX));
+        openCalls.current = [];
+        setOnlineStaff([]);
+      });
       source.onopen = () => (lastMessageAt = Date.now());
       source.onerror = () => {
-        if (source?.readyState !== EventSource.CLOSED || retryTimer) return;
+        if (stopped || paused || source?.readyState !== EventSource.CLOSED || retryTimer) return;
         retryTimer = setTimeout(() => {
           retryTimer = null;
           connect();
@@ -126,16 +143,40 @@ export function RefereeCallAlerts() {
       };
     };
     const ensureAlive = () => {
+      if (stopped || paused) return;
       const stale = Date.now() - lastMessageAt > STALE_STREAM_MS;
       if (!retryTimer && (source?.readyState === EventSource.CLOSED || stale)) connect();
     };
     const onVisibility = () => {
-      if (document.visibilityState === "visible") ensureAlive();
+      if (document.visibilityState === "hidden") {
+        hiddenTimer ??= setTimeout(() => {
+          hiddenTimer = null;
+          paused = true;
+          source?.close();
+          // Stop ringing for calls this screen can no longer see being taken.
+          openCalls.current = [];
+          if (retryTimer) clearTimeout(retryTimer);
+          retryTimer = null;
+        }, HIDDEN_PAUSE_MS);
+        return;
+      }
+      if (hiddenTimer) clearTimeout(hiddenTimer);
+      hiddenTimer = null;
+      if (paused && !stopped) {
+        paused = false;
+        connect();
+      } else {
+        ensureAlive();
+      }
     };
 
     connect();
+    // Opened in a background tab: start the hidden countdown right away.
+    if (document.visibilityState === "hidden") onVisibility();
     // Reopen with the new setting so others see this screen's sound on/off right away.
-    const unsubscribeMuted = subscribeRefereeSoundMuted(connect);
+    const unsubscribeMuted = subscribeRefereeSoundMuted(() => {
+      if (!stopped && !paused) connect();
+    });
     const watchdog = setInterval(ensureAlive, 5000);
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -148,6 +189,7 @@ export function RefereeCallAlerts() {
       source?.close();
       unsubscribeMuted();
       if (retryTimer) clearTimeout(retryTimer);
+      if (hiddenTimer) clearTimeout(hiddenTimer);
       clearInterval(watchdog);
       clearInterval(ringer);
       document.removeEventListener("visibilitychange", onVisibility);

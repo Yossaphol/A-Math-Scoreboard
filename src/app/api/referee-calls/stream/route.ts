@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { listMatchEvents, listOpenRefereeCalls } from "@/lib/referee-calls";
 import { forgetStalePresence, listOnlineStaff, PRESENCE_TOUCH_MS, touchPresence } from "@/lib/presence";
+import { readSystemSettings } from "@/lib/system-settings";
 
 // Live feed for Admin/Staff screens (Server-Sent Events): open referee calls, plus results
 // players confirm or disagree on at their tables. The DB is
@@ -20,6 +21,13 @@ const MAX_CATCH_UP_MS = 5 * 60_000;
 
 // The "who's online" list changes slowly — no need to re-read it every tick.
 const PRESENCE_LIST_MS = 5_000;
+
+// How often an open stream re-checks the /admin/settings switch, so screens left open stop
+// soon after an Admin turns the live feed off.
+const SETTINGS_CHECK_MS = 30_000;
+
+// Tells the page to stop for good (no reconnect) — sent when the live feed is switched off.
+const DISABLED_EVENT = "event: disabled\ndata: \n\n";
 
 // Where to resume the match feed: the last event id this screen saw (sent by EventSource as
 // Last-Event-ID on its own reconnects, or as ?since= when the page reopens the stream itself).
@@ -60,12 +68,21 @@ export async function GET(request: Request) {
       };
 
       send("retry: 1000\n\n");
+      // 0: the first pass checks the switch before streaming anything.
+      let lastSettingsCheck = 0;
       let lastTouch = 0;
       let lastPresenceRead = 0;
       let lastPresence = "";
       try {
         if (deviceId) await forgetStalePresence();
         while (!cancelled && !request.signal.aborted && Date.now() - startedAt < STREAM_LIFETIME_MS) {
+          if (Date.now() - lastSettingsCheck >= SETTINGS_CHECK_MS) {
+            lastSettingsCheck = Date.now();
+            if (!(await readSystemSettings()).liveFeedEnabled) {
+              send(DISABLED_EVENT);
+              break;
+            }
+          }
           const payload = JSON.stringify(await listOpenRefereeCalls(user));
           if (payload !== lastPayload) {
             send(`event: calls\ndata: ${payload}\n\n`);

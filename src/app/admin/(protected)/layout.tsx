@@ -7,6 +7,7 @@ import { OnlineStaffButton } from "@/components/admin/OnlineStaffButton";
 import { getInbox } from "@/lib/notifications";
 import { NotificationBell } from "@/components/ui/alerts/NotificationBell";
 import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
+import { getSystemSettings } from "@/lib/system-settings";
 import Link from "next/link";
 
 const SCORE_ENTRY = { href: "/admin/score-entry", label: "กรอกผล" };
@@ -19,6 +20,7 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { href: "/admin", label: "Dashboard", exact: true },
       { href: "/admin/audit-log", label: "Audit Log" },
+      { href: "/admin/settings", label: "ตั้งค่าระบบ" },
     ],
   },
   {
@@ -92,7 +94,7 @@ export default async function AdminProtectedLayout({
 }) {
   const user = await requireStaffOrAdmin();
   const nav = user.role === "ADMIN" ? ADMIN_NAV : STAFF_NAV;
-  const inbox = await getInbox(user.id);
+  const [inbox, { liveFeedEnabled }] = await Promise.all([getInbox(user.id), getSystemSettings()]);
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -141,9 +143,12 @@ export default async function AdminProtectedLayout({
           </div>
         </div>
 
-        <div className="px-4 pb-2 md:pb-0 md:pt-3">
-          <OnlineStaffButton currentUserId={user.id} />
-        </div>
+        {/* "Who's online" comes from the live feed — nothing to show while it's switched off. */}
+        {liveFeedEnabled && (
+          <div className="px-4 pb-2 md:pb-0 md:pt-3">
+            <OnlineStaffButton currentUserId={user.id} />
+          </div>
+        )}
 
         <AdminNav groups={nav} />
 
@@ -175,7 +180,7 @@ export default async function AdminProtectedLayout({
         </div>
       </aside>
       <div className="min-w-0 flex-1 p-4 md:p-8">{children}</div>
-      <RefereeCallAlerts />
+      {liveFeedEnabled && <RefereeCallAlerts />}
     </div>
   );
 }
