@@ -5,7 +5,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma/enums";
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+// How long a signed-in session trusts its cached role before checking the database again.
+const ROLE_REFRESH_MS = 30_000;
+
+export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   // Self-hosted (no NEXTAUTH_URL/AUTH_URL fixed) — trust the request's Host header to build
@@ -63,7 +66,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
       if (user) {
         if (user.role) {
           token.id = user.id as string;
@@ -75,6 +78,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             token.role = dbUser.role;
           }
         }
+        token.roleCheckedAt = Date.now();
+        return token;
+      }
+      // The role can change while someone is signed in (made Staff, accepted an invite,
+      // demoted) — re-read it now and then instead of trusting the value from sign-in forever,
+      // which used to leave a newly added Staff member locked out of /admin until they
+      // logged out and back in.
+      const stale = Date.now() - ((token.roleCheckedAt as number | undefined) ?? 0) > ROLE_REFRESH_MS;
+      if (token.id && (stale || trigger === "update")) {
+        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { role: true } });
+        if (dbUser) token.role = dbUser.role;
+        token.roleCheckedAt = Date.now();
       }
       return token;
     },
