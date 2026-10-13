@@ -87,8 +87,18 @@ export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
       // logged out and back in.
       const stale = Date.now() - ((token.roleCheckedAt as number | undefined) ?? 0) > ROLE_REFRESH_MS;
       if (token.id && (stale || trigger === "update")) {
-        const dbUser = await prisma.user.findUnique({ where: { id: token.id as string }, select: { role: true } });
-        if (dbUser) token.role = dbUser.role;
+        // The id can point at a row that no longer exists — e.g. a session from before the
+        // production database was replaced, which then failed every write that records who
+        // did it (LinkRequest.reviewedById → P2003). Re-match by email; if that account is
+        // gone too, end the session instead of keeping a role nobody holds any more.
+        const dbUser =
+          (await prisma.user.findUnique({ where: { id: token.id as string }, select: { id: true, role: true } })) ??
+          (token.email
+            ? await prisma.user.findUnique({ where: { email: token.email }, select: { id: true, role: true } })
+            : null);
+        if (!dbUser) return null;
+        token.id = dbUser.id;
+        token.role = dbUser.role;
         token.roleCheckedAt = Date.now();
       }
       return token;
