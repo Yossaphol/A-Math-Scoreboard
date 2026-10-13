@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/Badge";
 import { buttonBase, SIZES, VARIANTS } from "@/components/ui/Button";
 import { AdminNav, type NavGroup } from "@/components/admin/AdminNav";
 import { OnlineStaffButton } from "@/components/admin/OnlineStaffButton";
+import { getInbox } from "@/lib/notifications";
 import { NotificationBell } from "@/components/ui/alerts/NotificationBell";
 import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
 import Link from "next/link";
@@ -82,6 +83,7 @@ export default async function AdminProtectedLayout({
 }) {
   const user = await requireStaffOrAdmin();
   const nav = user.role === "ADMIN" ? ADMIN_NAV : STAFF_NAV;
+  const inbox = await getInbox(user.id);
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -96,10 +98,10 @@ export default async function AdminProtectedLayout({
               <Badge variant={user.role === "ADMIN" ? "danger" : "info"}>{user.role}</Badge>
             </p>
           </div>
-          <NotificationBell className="hidden shrink-0 md:block" align="left" />
+          <NotificationBell className="hidden shrink-0 md:block" align="left" inbox={inbox} />
           {/* Narrow screens: the same two actions as icon buttons next to the bell. */}
           <div className="flex shrink-0 items-center gap-1.5 md:hidden">
-            <NotificationBell />
+            <NotificationBell inbox={inbox} />
             <Link
               href="/"
               aria-label="ไปหน้า User"

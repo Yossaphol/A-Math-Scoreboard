@@ -5,6 +5,9 @@ import { AlertIconTile } from "./AlertIcon";
 import { clearNotifications, markNotificationsRead, useAlertState } from "./store";
 import { setRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
 import { Switch } from "@/components/ui/Switch";
+import { InboxList } from "@/components/account/InboxList";
+import { markNotificationsRead as markInboxRead } from "@/lib/actions/notifications";
+import type { InboxItem } from "@/lib/notifications";
 
 const timeFormat = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" });
 const dateFormat = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short" });
@@ -23,8 +26,12 @@ function formatWhen(ts: number) {
 export function NotificationBell({
   className = "",
   align = "right",
+  inbox,
 }: {
   className?: string;
+  // Stored notifications for this account (Staff invites, replies) — shown above this
+  // device's alert history.
+  inbox?: { items: InboxItem[]; unread: number };
   // Which edge the panel lines up with — "left" where the bell sits near the left of the
   // screen (the admin sidebar), so the panel doesn't run off it.
   align?: "left" | "right";
@@ -33,7 +40,7 @@ export function NotificationBell({
   const refereeSoundMuted = useRefereeSoundMuted();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const unread = history.filter((h) => h.createdAt > lastReadAt).length;
+  const unread = history.filter((h) => h.createdAt > lastReadAt).length + (inbox?.unread ?? 0);
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +59,10 @@ export function NotificationBell({
   }, [open]);
 
   function toggle() {
-    if (!open) markNotificationsRead();
+    if (!open) {
+      markNotificationsRead();
+      if (inbox?.unread) void markInboxRead();
+    }
     setOpen((o) => !o);
   }
 
@@ -98,6 +108,14 @@ export function NotificationBell({
                 </button>
               )}
             </div>
+            {inbox && inbox.items.length > 0 && (
+              <div className="border-b border-neutral-200/70">
+                <p className="px-4 pt-3 text-[11px] font-medium uppercase tracking-wide text-neutral-400">สำหรับคุณ</p>
+                <div className="max-h-64 overflow-y-auto px-1">
+                  <InboxList items={inbox.items} onNavigate={() => setOpen(false)} />
+                </div>
+              </div>
+            )}
             <div className="border-b border-neutral-200/70 px-4 py-3">
               <Switch
                 label="เสียงเรียกกรรมการ"

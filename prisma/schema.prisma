@@ -18,7 +18,9 @@ enum Role {
 }
 
 enum StaffStatus {
+  INVITED // added by an Admin, waiting for the person to accept (no access yet)
   ACTIVE
+  DECLINED // the person turned the invite down
   REVOKED
 }
 
@@ -83,13 +85,15 @@ model User {
 
   globalPlayer        GlobalPlayer?
   staffAssignments    TournamentStaff[]
-  createdTournaments  Tournament[]      @relation("TournamentCreatedBy")
-  linkRequestsMade    LinkRequest[]     @relation("LinkRequestUser")
-  linkRequestsHandled LinkRequest[]     @relation("LinkRequestReviewer")
-  editedMatches       Match[]           @relation("MatchEditedByAdmin")
+  createdTournaments  Tournament[]       @relation("TournamentCreatedBy")
+  linkRequestsMade    LinkRequest[]      @relation("LinkRequestUser")
+  linkRequestsHandled LinkRequest[]      @relation("LinkRequestReviewer")
+  editedMatches       Match[]            @relation("MatchEditedByAdmin")
   auditLogs           AuditLog[]
   refereeCallsHandled RefereeCall[]
   presence            StaffPresence[]
+  staffInvitesSent    TournamentStaff[]  @relation("StaffInvitedBy")
+  notifications       UserNotification[]
 }
 
 // Global Player ID — stable identity for a player across every tournament (spec §1).
@@ -179,6 +183,12 @@ model TournamentStaff {
   tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   status       StaffStatus @default(ACTIVE)
   assignedAt   DateTime    @default(now())
+  // Who sent the invite — told when it's accepted or declined.
+  invitedById  String?
+  invitedBy    User?       @relation("StaffInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+  respondedAt  DateTime?
+
+  notifications UserNotification[]
 
   @@unique([userId, tournamentId])
   @@index([tournamentId])
@@ -416,4 +426,33 @@ model StaffPresence {
 
   @@id([userId, deviceId])
   @@index([lastSeenAt])
+}
+
+enum NotificationKind {
+  STAFF_INVITE // with accept / decline (see staffAssignment)
+  STAFF_INVITE_ANSWERED // to the Admin who invited
+  LINK_APPROVED
+  LINK_REJECTED
+}
+
+// In-app notifications for signed-in people (the user menu and the admin bell). Unlike the
+// one-shot alerts (lib/flash.ts) these are stored, so they reach someone who wasn't looking
+// when it happened — e.g. a Staff invite sent before the person ever signed in.
+model UserNotification {
+  id     String           @id @default(cuid())
+  userId String
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind   NotificationKind
+  title  String
+  body   String?
+  // Where tapping it goes, when it isn't answered in place.
+  href   String?
+
+  staffAssignmentId String?
+  staffAssignment   TournamentStaff? @relation(fields: [staffAssignmentId], references: [id], onDelete: Cascade)
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
 }

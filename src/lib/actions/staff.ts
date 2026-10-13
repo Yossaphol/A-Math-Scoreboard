@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertAdmin } from "@/lib/dal";
 import { logAdminAction } from "@/lib/audit-log";
+import { setFlash } from "@/lib/flash";
+import { notify } from "@/lib/notifications";
 
 const assignSchema = z.object({
   tournamentId: z.string().min(1),
@@ -24,32 +26,59 @@ export async function assignStaff(formData: FormData) {
   }
   const { tournamentId, email } = parsed.data;
 
-  // Must promote an existing User too, not just create new ones as STAFF — otherwise anyone
-  // who already signed in once (auto-provisioned as plain USER) gets a TournamentStaff row
-  // but keeps role=USER, and requireStaffOrAdmin still locks them out of /admin entirely.
-  // Never downgrade an existing ADMIN, though — being made Staff on a Tournament is additive.
-  const existing = await prisma.user.findUnique({ where: { email } });
-  const user =
-    existing?.role === "ADMIN"
-      ? existing
-      : existing
-        ? await prisma.user.update({ where: { id: existing.id }, data: { role: "STAFF" } })
-        : await prisma.user.create({ data: { email, role: "STAFF" } });
-
-  await prisma.tournamentStaff.upsert({
-    where: { userId_tournamentId: { userId: user.id, tournamentId } },
-    update: { status: "ACTIVE" },
-    create: { userId: user.id, tournamentId, status: "ACTIVE" },
+  // Adding someone is an invite: they get a notification and only gain access (and the
+  // STAFF role) once they accept it — see respondStaffInvite. Someone who hasn't signed in yet
+  // gets a plain User row and finds the invite waiting on their first Google sign-in.
+  // Admins already reach every tournament, so they're simply added as active.
+  const tournament = await prisma.tournament.findUniqueOrThrow({
+    where: { id: tournamentId },
+    select: { name: true },
   });
+  const user =
+    (await prisma.user.findUnique({ where: { email } })) ??
+    (await prisma.user.create({ data: { email, role: "USER" } }));
+
+  const current = await prisma.tournamentStaff.findUnique({
+    where: { userId_tournamentId: { userId: user.id, tournamentId } },
+  });
+  if (current?.status === "ACTIVE" || current?.status === "INVITED") {
+    await setFlash({
+      type: "info",
+      title: current.status === "ACTIVE" ? "เป็น Staff อยู่แล้ว" : "ส่งคำเชิญไปแล้ว",
+      description: current.status === "ACTIVE" ? email : `${email} ยังไม่ได้ตอบรับ`,
+    });
+    revalidatePath(`/admin/tournaments/${tournamentId}/staff`);
+    return;
+  }
+
+  const status = user.role === "ADMIN" ? "ACTIVE" : "INVITED";
+  const assignment = await prisma.tournamentStaff.upsert({
+    where: { userId_tournamentId: { userId: user.id, tournamentId } },
+    update: { status, invitedById: admin.id, assignedAt: new Date(), respondedAt: null },
+    create: { userId: user.id, tournamentId, status, invitedById: admin.id },
+  });
+  if (status === "INVITED") {
+    await notify(user.id, {
+      kind: "STAFF_INVITE",
+      title: `คำเชิญเป็น Staff · ${tournament.name}`,
+      body: `${admin.name || admin.email} เชิญให้ช่วยจัดการ Tournament นี้ (จัดคู่ กรอกผล รับเรียกกรรมการ)`,
+      staffAssignmentId: assignment.id,
+    });
+  }
 
   await logAdminAction({
     actorId: admin.id,
     action: "staff.assign",
-    summary: `เพิ่ม ${email} เป็น Staff ของ Tournament`,
+    summary: `${status === "INVITED" ? "เชิญ" : "เพิ่ม"} ${email} เป็น Staff ของ "${tournament.name}"`,
     targetType: "TournamentStaff",
     targetId: tournamentId,
   });
 
+  await setFlash(
+    status === "INVITED"
+      ? { type: "success", title: "ส่งคำเชิญแล้ว", description: `${email} จะเห็นคำเชิญในเมนูการแจ้งเตือน` }
+      : { type: "success", title: "เพิ่ม Staff แล้ว", description: email }
+  );
   revalidatePath(`/admin/tournaments/${tournamentId}/staff`);
   revalidatePath("/admin/staff");
 }

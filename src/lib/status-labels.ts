@@ -8,7 +8,9 @@ export const PAIRING_METHOD_LABEL: Record<string, string> = {
 };
 
 export const STAFF_STATUS_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {
+  INVITED: { label: "รอตอบรับ", variant: "warning" },
   ACTIVE: { label: "ใช้งาน", variant: "success" },
+  DECLINED: { label: "ปฏิเสธแล้ว", variant: "neutral" },
   REVOKED: { label: "ถูกถอดแล้ว", variant: "neutral" },
 };
 

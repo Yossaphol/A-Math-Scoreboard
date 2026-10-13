@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getSession, assertAdmin } from "@/lib/dal";
 import { setFlash } from "@/lib/flash";
+import { notify } from "@/lib/notifications";
 
 const requestSchema = z.object({ globalPlayerId: z.coerce.number().int().positive() });
 
@@ -93,6 +94,12 @@ export async function approveLinkRequest(formData: FormData) {
     }),
   ]);
 
+  await notify(request.userId, {
+    kind: "LINK_APPROVED",
+    title: "ผูกบัญชีกับผู้เล่นแล้ว",
+    body: `Admin อนุมัติให้บัญชีนี้เป็นของ ${request.globalPlayer.name} — ดูประวัติการแข่งได้ที่หน้าบัญชี`,
+    href: "/account",
+  });
   await setFlash({
     type: "success",
     title: "อนุมัติคำขอผูกบัญชีแล้ว",
@@ -105,12 +112,21 @@ export async function rejectLinkRequest(formData: FormData) {
   const admin = await assertAdmin();
   const requestId = String(formData.get("requestId"));
 
-  const request = await prisma.linkRequest.findUniqueOrThrow({ where: { id: requestId } });
+  const request = await prisma.linkRequest.findUniqueOrThrow({
+    where: { id: requestId },
+    include: { globalPlayer: { select: { name: true } } },
+  });
   if (request.status !== "PENDING") throw new Error("คำขอนี้ถูกตรวจสอบไปแล้ว");
 
   await prisma.linkRequest.update({
     where: { id: requestId },
     data: { status: "REJECTED", reviewedById: admin.id, reviewedAt: new Date() },
+  });
+  await notify(request.userId, {
+    kind: "LINK_REJECTED",
+    title: "คำขอผูกบัญชีไม่ผ่าน",
+    body: `คำขอผูกกับ ${request.globalPlayer.name} ไม่ได้รับอนุมัติ — ตรวจชื่อแล้วส่งคำขอใหม่ หรือติดต่อผู้จัด`,
+    href: "/account",
   });
 
   revalidatePath("/admin/account-requests");

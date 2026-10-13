@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { STAFF_STATUS_BADGE } from "@/lib/status-labels";
 
 export default async function StaffAssignmentsPage() {
   await requireAdmin();
@@ -46,16 +47,20 @@ export default async function StaffAssignmentsPage() {
                     </Link>
                   </td>
                   <td className="py-3 pr-3">
-                    <Badge variant={a.status === "ACTIVE" ? "success" : "neutral"}>{a.status}</Badge>
+                    <Badge variant={STAFF_STATUS_BADGE[a.status].variant}>{STAFF_STATUS_BADGE[a.status].label}</Badge>
                   </td>
                   <td className="py-3 pr-5 text-right">
-                    {a.status === "ACTIVE" && (
+                    {(a.status === "ACTIVE" || a.status === "INVITED") && (
                       <form action={revokeStaff}>
                         <input type="hidden" name="staffAssignmentId" value={a.id} />
                         <ConfirmSubmitButton
-                          label="Revoke"
-                          confirmTitle="ถอด Staff?"
-                          confirmMessage={`${a.user.email} จะไม่มีสิทธิ์เข้าจัดการ ${a.tournament.name} อีก`}
+                          label={a.status === "INVITED" ? "ยกเลิกคำเชิญ" : "Revoke"}
+                          confirmTitle={a.status === "INVITED" ? "ยกเลิกคำเชิญ?" : "ถอด Staff?"}
+                          confirmMessage={
+                            a.status === "INVITED"
+                              ? `คำเชิญที่ส่งให้ ${a.user.email} จะใช้ไม่ได้อีก`
+                              : `${a.user.email} จะไม่มีสิทธิ์เข้าจัดการ ${a.tournament.name} อีก`
+                          }
                         />
                       </form>
                     )}

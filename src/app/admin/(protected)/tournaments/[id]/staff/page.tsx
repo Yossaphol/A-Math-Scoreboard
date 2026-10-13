@@ -19,9 +19,12 @@ export default async function TournamentStaffPage(props: PageProps<"/admin/tourn
     include: { user: true },
     orderBy: { assignedAt: "desc" },
   });
-  // Active staff first; revoked ones stay listed (and can be re-added) below them.
-  assignments.sort((a, b) => Number(a.status === "REVOKED") - Number(b.status === "REVOKED"));
+  // Active, then waiting on an answer, then declined/revoked (which can be invited again).
+  const ORDER = { ACTIVE: 0, INVITED: 1, DECLINED: 2, REVOKED: 3 } as const;
+  assignments.sort((a, b) => ORDER[a.status] - ORDER[b.status]);
   const activeCount = assignments.filter((a) => a.status === "ACTIVE").length;
+  const invitedCount = assignments.filter((a) => a.status === "INVITED").length;
+  const inactiveCount = assignments.length - activeCount - invitedCount;
 
   return (
     <div>
@@ -41,15 +44,16 @@ export default async function TournamentStaffPage(props: PageProps<"/admin/tourn
           <Button type="submit">+ Add Staff</Button>
         </form>
         <p className="mt-2 text-xs text-neutral-500">
-          Staff ต้องเข้าสู่ระบบด้วยปุ่ม &quot;เข้าสู่ระบบด้วย Google&quot; โดยใช้ Gmail นี้ จึงจะจัดการ Tournament นี้ได้
-          (เฉพาะ Tournament นี้เท่านั้น)
+          ระบบจะส่งคำเชิญไปที่บัญชี Gmail นี้ — เขาเข้าสู่ระบบด้วย Google แล้วกด &quot;ยืนยัน&quot; ในเมนูการแจ้งเตือน
+          จึงจะจัดการ Tournament นี้ได้ (เฉพาะ Tournament นี้เท่านั้น)
         </p>
       </Card>
 
       {assignments.length > 0 && (
         <p className="mb-2 mt-6 text-xs text-neutral-500">
           Staff ที่ใช้งานอยู่ {activeCount} คน
-          {assignments.length > activeCount ? ` · ถูกถอดแล้ว ${assignments.length - activeCount} คน` : ""}
+          {invitedCount ? ` · รอตอบรับ ${invitedCount} คน` : ""}
+          {inactiveCount ? ` · ปฏิเสธ/ถูกถอด ${inactiveCount} คน` : ""}
         </p>
       )}
 
@@ -74,7 +78,7 @@ export default async function TournamentStaffPage(props: PageProps<"/admin/tourn
             <tbody>
               {assignments.map((a) => {
                 const status = STAFF_STATUS_BADGE[a.status];
-                const revoked = a.status === "REVOKED";
+                const revoked = a.status === "REVOKED" || a.status === "DECLINED";
                 return (
                   <tr key={a.id} className={`border-b border-neutral-100 last:border-0 ${revoked ? "text-neutral-400" : ""}`}>
                     <td className="py-3 pl-5 pr-3">
@@ -94,21 +98,25 @@ export default async function TournamentStaffPage(props: PageProps<"/admin/tourn
                     </td>
                     <td className="py-3 pr-5 text-right">
                       {revoked ? (
-                        // assignStaff upserts, so re-adding the same email just reactivates this row.
+                        // assignStaff upserts, so this sends this row a fresh invite.
                         <form action={assignStaff} className="inline-block">
                           <input type="hidden" name="tournamentId" value={id} />
                           <input type="hidden" name="email" value={a.user.email} />
                           <SubmitButton size="sm" variant="secondary">
-                            เพิ่มกลับ
+                            เชิญอีกครั้ง
                           </SubmitButton>
                         </form>
                       ) : (
                         <form action={revokeStaff} className="inline-block">
                           <input type="hidden" name="staffAssignmentId" value={a.id} />
                           <ConfirmSubmitButton
-                            label="Revoke"
-                            confirmTitle="ถอด Staff?"
-                            confirmMessage={`${a.user.email} จะไม่มีสิทธิ์เข้าจัดการ Tournament นี้อีก`}
+                            label={a.status === "INVITED" ? "ยกเลิกคำเชิญ" : "Revoke"}
+                            confirmTitle={a.status === "INVITED" ? "ยกเลิกคำเชิญ?" : "ถอด Staff?"}
+                            confirmMessage={
+                              a.status === "INVITED"
+                                ? `คำเชิญที่ส่งให้ ${a.user.email} จะใช้ไม่ได้อีก`
+                                : `${a.user.email} จะไม่มีสิทธิ์เข้าจัดการ Tournament นี้อีก`
+                            }
                             size="sm"
                           />
                         </form>
