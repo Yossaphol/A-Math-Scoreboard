@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 
-// Prisma Postgres Free plan storage limit — https://www.prisma.io/pricing (500 MB).
+// Supabase Free plan database size limit — https://supabase.com/pricing (500 MB).
 // Update this if the project's plan ever changes.
 const DB_FREE_TIER_BYTES = 500 * 1024 * 1024;
 

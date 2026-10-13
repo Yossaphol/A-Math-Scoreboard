@@ -3,7 +3,7 @@
 Next.js (App Router) + Prisma/PostgreSQL + Auth.js (Credentials for dev, Google OAuth for
 real use). See `tournament_score_pairing_uxui_spec_v2.md` (in the parent folder) for the full
 product spec this implements. Phases 1–4 below are functionally implemented and **deployed to
-production** on Vercel + Prisma Postgres.
+production** on Vercel + Supabase Postgres.
 
 Visual design: minimal white UI — frosted/translucent white cards (`.surface` in
 `globals.css`) over a soft light-gray background with a subtle small-dot texture, no dark
@@ -73,13 +73,21 @@ ongoing/confirmed = green, completed = gray, ADMIN = red, STAFF = blue (`info` v
 
 - **Hosting**: Vercel (`vercel --prod` to deploy; `vercel.json` pins the function region to
   `sin1` — this must stay in the same region as the database, see below).
-- **Database**: Prisma Postgres, region `ap-southeast-1`, connected via the pooled
-  `pooled.db.prisma.io` connection string. `DATABASE_URL` on Vercel points here;
-  `.env.production.local` (gitignored) has the same value for one-off scripts.
-- **Migrations use the direct connection**: `DIRECT_DATABASE_URL` on Vercel is the same
-  credentials on the direct host `db.prisma.io:5432`. `prisma7.config.ts` prefers it over
-  `DATABASE_URL` for CLI commands, because `prisma migrate deploy` takes a Postgres advisory
-  lock that can time out through the pooler (`P1002`). The app keeps using the pooled URL.
+- **Database**: Supabase Postgres (Free plan, via the Vercel Marketplace), region `sin1`
+  (`ap-southeast-1`). Moved off Prisma Postgres in Oct 2026: its Free plan caps *operations*
+  (200K/month) and the Admin live feed alone burned through that in a day, which locked the
+  database. Supabase Free doesn't count queries (limits: 500 MB, 5 GB egress/month, pauses
+  after a week idle, no automatic backups). `DATABASE_URL` on Vercel is the **transaction
+  pooler** (`aws-0-ap-southeast-1.pooler.supabase.com:6543`) with
+  `?sslmode=require&uselibpqcompat=true` — without `uselibpqcompat`, `pg` treats `require` as
+  `verify-full` and rejects Supabase's self-signed CA chain (P1011). `.env.production.local`
+  (gitignored) has the same values for one-off scripts.
+- **Migrations use the session pooler**: `DIRECT_DATABASE_URL` on Vercel is the same
+  credentials on port `5432` of the same pooler host (session mode — Supabase's true direct
+  host is IPv6-only). `prisma7.config.ts` prefers it over `DATABASE_URL` for CLI commands,
+  because `prisma migrate deploy` takes a Postgres advisory lock, which transaction pooling
+  can't hold. The app keeps using the transaction pooler. The Marketplace integration also
+  adds `POSTGRES_*`/`SUPABASE_*` env vars; the app doesn't read them.
 - **Why the region pin matters**: Vercel's default function region (`iad1`, US East) and the
   database region (`ap-southeast-1`, Singapore) being different was the root cause of a real
   production slowness issue — every DB round trip crossed the Pacific. `vercel.json`'s
@@ -95,7 +103,7 @@ ongoing/confirmed = green, completed = gray, ADMIN = red, STAFF = blue (`info` v
   DATABASE_URL="<prod connection string>" npx tsx prisma/promote-admin.ts <email>
   ```
 - **Other one-off ops scripts** (all read the same way, with a prod `DATABASE_URL`):
-  `prisma/check-db-usage.ts` (storage used vs. the Prisma Postgres Free tier's 500 MB limit —
+  `prisma/check-db-usage.ts` (storage used vs. the Supabase Free plan's 500 MB limit —
   also shown as a live box on the Admin Dashboard) and `prisma/check-broken-staff.ts` (finds
   any `TournamentStaff` assignment whose `User.role` never got promoted — see the staff-role
   bug note below).

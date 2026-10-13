@@ -40,6 +40,7 @@ export async function PlayerList({ tournamentId, query }: { tournamentId: string
               <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
                 <th className="py-3 pl-5 pr-3">อันดับ</th>
                 <th className="py-3 pr-3">Name</th>
+                <th className="py-3 pr-3 text-right">เกม</th>
                 <th className="py-3 pr-3 text-right">Points</th>
                 <th className="py-3 pr-3 text-center">W/T/L</th>
                 <th className="py-3 pr-5 text-right">ผลต่างสะสม</th>
@@ -63,6 +64,7 @@ export async function PlayerList({ tournamentId, query }: { tournamentId: string
                       </Badge>
                     )}
                   </td>
+                  <td className="py-3 pr-3 text-right tabular-nums text-neutral-600">{p.gamesPlayed}</td>
                   <td className="py-3 pr-3 text-right font-medium">{p.points}</td>
                   <td className="whitespace-nowrap py-3 pr-3 text-center tabular-nums">
                     {p.wins}
