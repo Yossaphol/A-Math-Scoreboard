@@ -16,8 +16,11 @@ export type RefereeCallView = {
   tournamentId: string;
   tournamentName: string;
   tableNumber: number;
+  matchId: string | null;
   roundId: string | null;
   roundNumber: number | null;
+  // Still being played — then "ดู Match" opens the score-entry page; otherwise the Round page.
+  roundLive: boolean;
   players: string | null;
   handledByName: string | null;
 };
@@ -42,7 +45,8 @@ export async function listOpenRefereeCalls(user: { id: string; role: Role }): Pr
       handledBy: { select: { name: true, email: true } },
       match: {
         select: {
-          round: { select: { id: true, roundNumber: true } },
+          id: true,
+          round: { select: { id: true, roundNumber: true, status: true } },
           player1: { select: { globalPlayer: { select: { name: true } } } },
           player2: { select: { globalPlayer: { select: { name: true } } } },
         },
@@ -57,8 +61,10 @@ export async function listOpenRefereeCalls(user: { id: string; role: Role }): Pr
     tournamentId: c.tournament.id,
     tournamentName: c.tournament.name,
     tableNumber: c.table.tableNumber,
+    matchId: c.match?.id ?? null,
     roundId: c.match?.round?.id ?? null,
     roundNumber: c.match?.round?.roundNumber ?? null,
+    roundLive: c.match?.round?.status === "CONFIRMED",
     players: c.match
       ? [c.match.player1.globalPlayer.name, c.match.player2?.globalPlayer.name].filter(Boolean).join(" vs ")
       : null,

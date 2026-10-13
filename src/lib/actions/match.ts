@@ -167,6 +167,7 @@ export async function adminSetMatchResult(formData: FormData) {
     description: `${where} · ${match.player1.globalPlayer.name} ${player1Score} – ${player2Score} ${match.player2?.globalPlayer.name ?? ""}`.trim(),
   });
   revalidatePath(`/admin/tournaments/${match.tournamentId}/scoreboard`);
+  revalidatePath("/admin/score-entry");
   revalidatePath(publicTournamentPath({ id: match.tournamentId, mode: match.tournament.mode }));
 }
 

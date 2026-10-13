@@ -173,9 +173,13 @@ function CallActions({ call }: { call: RefereeCallView }) {
       >
         เสร็จแล้ว
       </Button>
-      {call.roundId && (
+      {call.roundId && call.matchId && (
         <Link
-          href={`/admin/tournaments/${call.tournamentId}/rounds/${call.roundId}`}
+          href={
+            call.roundLive
+              ? `/admin/score-entry?t=${call.tournamentId}&m=${call.matchId}`
+              : `/admin/tournaments/${call.tournamentId}/rounds/${call.roundId}`
+          }
           className="px-1 text-xs font-medium text-neutral-500 hover:text-neutral-900"
         >
           ดู Match →
