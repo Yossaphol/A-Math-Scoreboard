@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export type NavIcon = "overview" | "competition" | "people";
-export type NavItem = { href: string; label: string; exact?: boolean };
+// badge: how many things on that page are waiting on someone (e.g. pending Account Requests).
+export type NavItem = { href: string; label: string; exact?: boolean; badge?: number };
 export type NavGroup = { id: string; label: string; icon: NavIcon; items: NavItem[] };
 
 // Which groups this device has collapsed, kept as a JSON string so the snapshot stays stable.
@@ -51,6 +52,25 @@ function parseIds(raw: string): string[] {
 
 function isActive(pathname: string, item: NavItem) {
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+// Same red count as the notification bell; screen readers hear the label after the link's name.
+function CountBadge({ count, label }: { count: number; label: string }) {
+  return (
+    <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold tabular-nums leading-none text-white">
+      <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+function ItemLabel({ item }: { item: NavItem }) {
+  return (
+    <>
+      <span className="truncate">{item.label}</span>
+      {!!item.badge && <CountBadge count={item.badge} label={`รอดำเนินการ ${item.badge} รายการ`} />}
+    </>
+  );
 }
 
 function GroupIcon({ icon }: { icon: NavIcon }) {
@@ -116,7 +136,7 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
   }
 
   const itemClass = (active: boolean) =>
-    `block whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors ${
+    `flex items-center justify-between gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors ${
       active ? "bg-neutral-900 font-medium text-white" : "text-neutral-600 hover:bg-black/5 hover:text-neutral-900"
     }`;
 
@@ -131,7 +151,7 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
             aria-current={isActive(pathname, item) ? "page" : undefined}
             className={`shrink-0 ${itemClass(isActive(pathname, item))}`}
           >
-            {item.label}
+            <ItemLabel item={item} />
           </Link>
         ))}
       </nav>
@@ -140,6 +160,8 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
         {groups.map((g) => {
           const open = !collapsed.has(g.id);
           const hasActive = g.items.some((i) => isActive(pathname, i));
+          // A collapsed group still shows that something inside is waiting.
+          const hiddenCount = open ? 0 : g.items.reduce((sum, i) => sum + (i.badge ?? 0), 0);
           return (
             <div key={g.id}>
               <button
@@ -152,6 +174,7 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
               >
                 <GroupIcon icon={g.icon} />
                 <span className="flex-1">{g.label}</span>
+                {hiddenCount > 0 && <CountBadge count={hiddenCount} label={`รอดำเนินการ ${hiddenCount} รายการ`} />}
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -172,7 +195,7 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
                         aria-current={active ? "page" : undefined}
                         className={itemClass(active)}
                       >
-                        {item.label}
+                        <ItemLabel item={item} />
                       </Link>
                     );
                   })}

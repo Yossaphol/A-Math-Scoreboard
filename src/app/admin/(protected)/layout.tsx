@@ -8,6 +8,7 @@ import { getInbox } from "@/lib/notifications";
 import { NotificationBell } from "@/components/ui/alerts/NotificationBell";
 import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
 import { getSystemSettings } from "@/lib/system-settings";
+import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 
 const SCORE_ENTRY = { href: "/admin/score-entry", label: "กรอกผล" };
@@ -51,6 +52,10 @@ const STAFF_NAV: NavGroup[] = [
   },
 ];
 
+function withBadges(groups: NavGroup[], badges: Record<string, number>): NavGroup[] {
+  return groups.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, badge: badges[i.href] })) }));
+}
+
 function UserSiteIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="size-4 shrink-0" aria-hidden="true">
@@ -93,8 +98,14 @@ export default async function AdminProtectedLayout({
   children: React.ReactNode;
 }) {
   const user = await requireStaffOrAdmin();
-  const nav = user.role === "ADMIN" ? ADMIN_NAV : STAFF_NAV;
-  const [inbox, { liveFeedEnabled }] = await Promise.all([getInbox(user.id), getSystemSettings()]);
+  const isAdmin = user.role === "ADMIN";
+  const [inbox, { liveFeedEnabled }, pendingLinkRequests] = await Promise.all([
+    getInbox(user.id),
+    getSystemSettings(),
+    // One indexed COUNT per page load (LinkRequest @@index([status])), refreshed on navigation.
+    isAdmin ? prisma.linkRequest.count({ where: { status: "PENDING" } }) : 0,
+  ]);
+  const nav = isAdmin ? withBadges(ADMIN_NAV, { "/admin/account-requests": pendingLinkRequests }) : STAFF_NAV;
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
