@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { logoutAction } from "@/lib/actions/auth";
-import { markNotificationsRead } from "@/lib/actions/notifications";
+import { clearNotifications, markNotificationsRead } from "@/lib/actions/notifications";
 import type { InboxItem } from "@/lib/notifications";
 import { InboxList } from "./InboxList";
 
@@ -83,7 +83,18 @@ export function UserMenu({
           role="menu"
           className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl bg-white p-1 shadow-[0_10px_30px_-12px_rgba(16,24,40,0.25),0_2px_6px_rgba(16,24,40,0.06)] ring-1 ring-black/[0.05]"
         >
-          <p className="px-3 pb-1 pt-2 text-xs font-semibold text-neutral-900">การแจ้งเตือน</p>
+          <div className="flex items-center justify-between px-3 pb-1 pt-2">
+            <p className="text-xs font-semibold text-neutral-900">การแจ้งเตือน</p>
+            {inbox.items.some((n) => n.invite?.status !== "INVITED") && (
+              <button
+                type="button"
+                onClick={() => void clearNotifications()}
+                className="text-[11px] text-neutral-500 hover:text-neutral-900"
+              >
+                ล้างทั้งหมด
+              </button>
+            )}
+          </div>
           <div className="max-h-80 overflow-y-auto">
             <InboxList items={inbox.items} onNavigate={() => setOpen(false)} />
           </div>

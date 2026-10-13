@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -96,6 +96,16 @@ function GroupIcon({ icon }: { icon: NavIcon }) {
  */
 export function AdminNav({ groups }: { groups: NavGroup[] }) {
   const pathname = usePathname();
+  const rowRef = useRef<HTMLElement>(null);
+
+  // The phone menu is one sideways-scrolling row — keep the current page in view, or it can
+  // sit off the edge (e.g. "กรอกผล" at the far right).
+  useEffect(() => {
+    const row = rowRef.current;
+    const active = row?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!row || !active || row.offsetParent === null) return;
+    row.scrollTo({ left: active.offsetLeft - (row.clientWidth - active.offsetWidth) / 2, behavior: "smooth" });
+  }, [pathname]);
   const collapsed = new Set(parseIds(useSyncExternalStore(subscribe, readCollapsed, () => "[]")));
 
   function toggle(id: string) {
@@ -113,9 +123,14 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
   return (
     <>
       {/* Narrow screens: every page in one row. */}
-      <nav className="flex gap-1 overflow-x-auto px-4 pb-3 md:hidden" aria-label="เมนู Admin">
+      <nav ref={rowRef} className="relative flex gap-1 overflow-x-auto px-4 pb-3 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden" aria-label="เมนู Admin">
         {groups.flatMap((g) => g.items).map((item) => (
-          <Link key={item.href} href={item.href} className={`shrink-0 ${itemClass(isActive(pathname, item))}`}>
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={isActive(pathname, item) ? "page" : undefined}
+            className={`shrink-0 ${itemClass(isActive(pathname, item))}`}
+          >
             {item.label}
           </Link>
         ))}

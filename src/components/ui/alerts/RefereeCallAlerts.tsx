@@ -213,7 +213,7 @@ function SoundUnlockHint() {
         unlockAudio();
         playAlertChime();
       }}
-      className="fixed bottom-4 right-4 z-[55] flex items-center gap-2 rounded-full bg-neutral-900 px-4 py-2.5 text-xs font-medium text-white shadow-lg transition-colors hover:bg-neutral-700"
+      className="fixed bottom-4 right-4 z-[55] flex items-center gap-2 rounded-full bg-neutral-900 px-3 py-2 text-xs sm:px-4 sm:py-2.5 font-medium text-white shadow-lg transition-colors hover:bg-neutral-700"
     >
       <svg viewBox="0 0 24 24" fill="none" className="size-4" aria-hidden="true">
         <path
@@ -224,7 +224,8 @@ function SoundUnlockHint() {
           strokeLinejoin="round"
         />
       </svg>
-      แตะเพื่อเปิดเสียงเรียกกรรมการ
+      <span className="sm:hidden">เปิดเสียง</span>
+      <span className="hidden sm:inline">แตะเพื่อเปิดเสียงเรียกกรรมการ</span>
     </button>
   );
 }

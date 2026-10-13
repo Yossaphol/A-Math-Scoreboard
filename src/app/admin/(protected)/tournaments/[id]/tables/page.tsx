@@ -15,7 +15,7 @@ export default async function AdminTablesPage(props: PageProps<"/admin/tournamen
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <p className="min-w-0 flex-1 text-xs text-neutral-500">
+        <p className="min-w-0 flex-[1_1_18rem] text-xs text-neutral-500">
           QR Code ผูกกับ Table และใช้ได้ตลอด Tournament (spec §12) — สแกนแล้วเจอ Match ปัจจุบันของโต๊ะนั้นทันที
           จำนวนโต๊ะปรับตามจำนวนผู้เล่นอัตโนมัติ (ปัดขึ้นจาก player ÷ 2) ดาวน์โหลดรูปไปพิมพ์แปะโต๊ะจริงได้เลย
           หรือถ้าไม่สะดวกสแกน ใช้ลิงก์ใต้ QR เพื่อกรอกผลได้โดยตรง

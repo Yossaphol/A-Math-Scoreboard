@@ -95,3 +95,21 @@ export async function respondStaffInvite(formData: FormData) {
   }
   await setFlash({ type: "info", title: "ปฏิเสธคำเชิญแล้ว", description: assignment.tournament.name });
 }
+
+// Removing notifications from your own list. A Staff invite that's still waiting for an answer
+// stays — deleting it would leave no way to accept or decline.
+const openInvite = { staffAssignment: { status: "INVITED" as const } };
+
+export async function deleteNotification(id: string) {
+  const user = await requireSignedIn();
+  await prisma.userNotification.deleteMany({ where: { id, userId: user.id, NOT: openInvite } });
+  revalidatePath("/", "layout");
+}
+
+export async function clearNotifications() {
+  const user = await requireSignedIn();
+  await prisma.userNotification.deleteMany({
+    where: { userId: user.id, OR: [{ staffAssignmentId: null }, { NOT: openInvite }] },
+  });
+  revalidatePath("/", "layout");
+}

@@ -6,7 +6,10 @@ import { clearNotifications, markNotificationsRead, useAlertState } from "./stor
 import { setRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
 import { Switch } from "@/components/ui/Switch";
 import { InboxList } from "@/components/account/InboxList";
-import { markNotificationsRead as markInboxRead } from "@/lib/actions/notifications";
+import {
+  clearNotifications as clearInbox,
+  markNotificationsRead as markInboxRead,
+} from "@/lib/actions/notifications";
 import type { InboxItem } from "@/lib/notifications";
 
 const timeFormat = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" });
@@ -98,10 +101,13 @@ export function NotificationBell({
           >
             <div className="flex items-center justify-between border-b border-neutral-200/70 px-4 py-3">
               <p className="text-sm font-semibold text-neutral-900">การแจ้งเตือน</p>
-              {history.length > 0 && (
+              {(history.length > 0 || (inbox?.items.length ?? 0) > 0) && (
                 <button
                   type="button"
-                  onClick={clearNotifications}
+                  onClick={() => {
+                    clearNotifications();
+                    if (inbox?.items.length) void clearInbox();
+                  }}
                   className="text-xs text-neutral-500 hover:text-neutral-900"
                 >
                   ล้างทั้งหมด

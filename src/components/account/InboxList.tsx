@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { InboxItem } from "@/lib/notifications";
-import { respondStaffInvite } from "@/lib/actions/notifications";
+import { deleteNotification, respondStaffInvite } from "@/lib/actions/notifications";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 
 const timeFormat = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -17,7 +18,17 @@ const INVITE_STATE: Record<string, string> = {
  * Stored notifications for the signed-in person (user menu on the public site, bell in the
  * admin shell). A Staff invite is answered right here; anything else links to where it's about.
  */
-export function InboxList({ items, onNavigate }: { items: InboxItem[]; onNavigate?: () => void }) {
+export function InboxList({ items: all, onNavigate }: { items: InboxItem[]; onNavigate?: () => void }) {
+  // Hidden right away on ✕; the server copy follows on the next render.
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [, startTransition] = useTransition();
+  const items = all.filter((n) => !removed.has(n.id));
+
+  function remove(id: string) {
+    setRemoved((prev) => new Set(prev).add(id));
+    startTransition(() => deleteNotification(id));
+  }
+
   if (items.length === 0) {
     return <p className="px-3 py-4 text-center text-xs text-neutral-400">ยังไม่มีการแจ้งเตือน</p>;
   }
@@ -36,7 +47,20 @@ export function InboxList({ items, onNavigate }: { items: InboxItem[]; onNavigat
           </>
         );
         return (
-          <li key={n.id} className="px-3 py-2.5">
+          <li key={n.id} className="group relative px-3 py-2.5 pr-9">
+            {!pendingInvite && (
+              <button
+                type="button"
+                onClick={() => remove(n.id)}
+                aria-label={`ลบการแจ้งเตือน: ${n.title}`}
+                title="ลบ"
+                className="absolute right-1.5 top-2 flex size-7 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-black/5 hover:text-neutral-700 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+              >
+                <svg viewBox="0 0 24 24" fill="none" className="size-3.5" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
             {n.href && !n.invite ? (
               <Link href={n.href} onClick={onNavigate} className="-mx-1 block rounded-lg px-1 hover:bg-black/[0.03]">
                 {content}
