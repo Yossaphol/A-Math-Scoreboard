@@ -10,6 +10,7 @@ import { setFlash } from "@/lib/flash";
 import { practiceUnlockCookieName } from "@/lib/practice-lock";
 import { publicTournamentPath, publicTournamentListPath } from "@/lib/tournament-path";
 import { logAdminAction } from "@/lib/audit-log";
+import { syncStaffRoles } from "@/lib/staff-role";
 import { playerLimitOf, roundLimitOf } from "@/lib/tournament-limits";
 
 const createTournamentSchema = z.object({
@@ -285,8 +286,13 @@ export async function deleteTournament(formData: FormData) {
   const { tournamentId } = parsed.data;
   const admin = await assertAdmin();
 
-  const tournament = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+  const tournament = await prisma.tournament.findUniqueOrThrow({
+    where: { id: tournamentId },
+    include: { staff: { select: { userId: true } } },
+  });
   await prisma.tournament.delete({ where: { id: tournamentId } });
+  // Its Staff assignments went with it — anyone left with none is no longer Staff.
+  await syncStaffRoles(tournament.staff.map((s) => s.userId));
 
   await logAdminAction({
     actorId: admin.id,

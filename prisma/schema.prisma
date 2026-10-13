@@ -431,6 +431,7 @@ model StaffPresence {
 enum NotificationKind {
   STAFF_INVITE // with accept / decline (see staffAssignment)
   STAFF_INVITE_ANSWERED // to the Admin who invited
+  STAFF_REMOVED // an Admin took this person off a tournament's Staff
   LINK_APPROVED
   LINK_REJECTED
 }

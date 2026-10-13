@@ -7,6 +7,7 @@ import { assertAdmin } from "@/lib/dal";
 import { logAdminAction } from "@/lib/audit-log";
 import { setFlash } from "@/lib/flash";
 import { notify } from "@/lib/notifications";
+import { syncStaffRoles } from "@/lib/staff-role";
 
 const assignSchema = z.object({
   tournamentId: z.string().min(1),
@@ -87,16 +88,30 @@ export async function revokeStaff(formData: FormData) {
   const admin = await assertAdmin();
   const staffAssignmentId = String(formData.get("staffAssignmentId"));
 
+  const before = await prisma.tournamentStaff.findUniqueOrThrow({ where: { id: staffAssignmentId } });
   const assignment = await prisma.tournamentStaff.update({
     where: { id: staffAssignmentId },
     data: { status: "REVOKED" },
-    include: { user: true },
+    include: { user: true, tournament: { select: { name: true } } },
   });
+  // No ACTIVE assignment left → back to a plain User, so the admin pages go away too
+  // (within the session's role refresh, ~30s) until they're invited again.
+  await syncStaffRoles([assignment.userId]);
+  if (before.status === "ACTIVE") {
+    await notify(assignment.userId, {
+      kind: "STAFF_REMOVED",
+      title: `ถูกถอดจาก Staff · ${assignment.tournament.name}`,
+      body: "ไม่มีสิทธิ์จัดการ Tournament นี้แล้ว — ถ้าต้องการช่วยต่อ ติดต่อ Admin ให้เชิญใหม่",
+    });
+  }
 
   await logAdminAction({
     actorId: admin.id,
-    action: "staff.revoke",
-    summary: `ถอด ${assignment.user.email} จาก Staff ของ Tournament`,
+    action: before.status === "INVITED" ? "staff.invite_cancel" : "staff.revoke",
+    summary:
+      before.status === "INVITED"
+        ? `ยกเลิกคำเชิญ ${assignment.user.email} เป็น Staff ของ "${assignment.tournament.name}"`
+        : `ถอด ${assignment.user.email} จาก Staff ของ "${assignment.tournament.name}"`,
     targetType: "TournamentStaff",
     targetId: assignment.tournamentId,
   });

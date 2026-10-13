@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertSuperAdmin } from "@/lib/dal";
 import { logAdminAction } from "@/lib/audit-log";
+import { syncStaffRoles } from "@/lib/staff-role";
 
 const addAdminSchema = z.object({ email: z.email("อีเมลไม่ถูกต้อง") });
 
@@ -47,6 +48,8 @@ export async function removeAdmin(formData: FormData) {
   }
 
   const target = await prisma.user.update({ where: { id: userId }, data: { role: "USER" } });
+  // Still Staff on some tournament? Then they keep that, rather than dropping to plain User.
+  await syncStaffRoles([userId]);
 
   await logAdminAction({
     actorId: admin.id,
