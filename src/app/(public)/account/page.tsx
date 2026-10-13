@@ -12,6 +12,8 @@ import { EditOwnNameForm } from "@/components/account/EditOwnNameForm";
 import { inputClass } from "@/components/ui/styles";
 import { publicTournamentPath } from "@/lib/tournament-path";
 import { BYE_SCORE } from "@/lib/match/bye";
+import { cappedDiff } from "@/lib/match/diff";
+import { getMaxScoreConfig } from "@/lib/match/max-score-config";
 
 const REQUEST_STATUS_LABEL: Record<string, { label: string; variant: "warning" | "success" | "danger" }> = {
   PENDING: { label: "รอตรวจสอบ", variant: "warning" },
@@ -20,6 +22,12 @@ const REQUEST_STATUS_LABEL: Record<string, { label: string; variant: "warning" |
 };
 
 const RESULT_LABEL: Record<string, string> = { WIN: "ชนะ", TIE: "เสมอ", LOSS: "แพ้" };
+// Same points as the Scoreboard (src/lib/scoreboard.ts): W 2, T 1, L 0.
+const RESULT_POINTS: Record<string, number> = { WIN: 2, TIE: 1, LOSS: 0 };
+
+function signed(n: number) {
+  return n > 0 ? `+${n}` : `${n}`;
+}
 
 export default async function AccountPage(props: PageProps<"/account">) {
   const session = await getSession();
@@ -171,7 +179,9 @@ export default async function AccountPage(props: PageProps<"/account">) {
                     opponent: m.player2?.globalPlayer.name ?? "Bye",
                     myScore: m.finalPlayer1Score,
                     oppScore: m.finalPlayer2Score,
-                    result: m.player1Result,
+                    result: m.isBye ? ("WIN" as const) : m.player1Result,
+                    // Spec §19: a Bye is W 100-0, Diff +100, never capped by Maximum Score.
+                    diff: m.isBye ? BYE_SCORE : gameDiff(m, m.finalPlayer1Score, m.finalPlayer2Score),
                     isBye: m.isBye,
                     absent: false,
                   })),
@@ -182,6 +192,7 @@ export default async function AccountPage(props: PageProps<"/account">) {
                     myScore: m.finalPlayer2Score,
                     oppScore: m.finalPlayer1Score,
                     result: m.player2Result,
+                    diff: gameDiff(m, m.finalPlayer2Score, m.finalPlayer1Score),
                     isBye: false,
                     absent: false,
                   })),
@@ -193,6 +204,7 @@ export default async function AccountPage(props: PageProps<"/account">) {
                     myScore: 0,
                     oppScore: BYE_SCORE,
                     result: "LOSS" as const,
+                    diff: -BYE_SCORE,
                     isBye: false,
                     absent: true,
                   })),
@@ -201,6 +213,16 @@ export default async function AccountPage(props: PageProps<"/account">) {
                   if (a.roundNumber != null) return -1;
                   if (b.roundNumber != null) return 1;
                   return a.createdAt.getTime() - b.createdAt.getTime();
+                });
+
+                // Running totals after each game, in play order — the same numbers the
+                // Scoreboard would have shown for this player right after that round.
+                let runningDiff = 0;
+                let runningPoints = 0;
+                const rows = matches.map((m) => {
+                  if (m.diff != null) runningDiff += m.diff;
+                  if (m.result) runningPoints += RESULT_POINTS[m.result];
+                  return { ...m, cumulativeDiff: runningDiff, cumulativePoints: runningPoints };
                 });
 
                 return (
@@ -220,28 +242,52 @@ export default async function AccountPage(props: PageProps<"/account">) {
                       </div>
                     </div>
 
-                    <ul className="mt-3 divide-y divide-neutral-100">
-                      {matches.map((m, i) => (
-                        <li key={i} className="flex items-center justify-between py-2 text-sm">
-                          <span className="text-neutral-500">
-                            {m.roundNumber != null ? `R${m.roundNumber}` : "ฝึกซ้อม"}
-                          </span>
-                          <span>{m.absent ? "ไม่ได้มาแข่ง" : m.isBye ? "Bye" : `vs ${m.opponent}`}</span>
-                          <span className="font-medium">
-                            {/* Spec §19: a Bye counts as a win worth 100-0. */}
-                            {m.isBye ? `${BYE_SCORE} - 0` : `${m.myScore} - ${m.oppScore}`}{" "}
-                            {m.isBye ? (
-                              <span className="text-neutral-500">({RESULT_LABEL.WIN})</span>
-                            ) : (
-                              m.result && <span className="text-neutral-500">({RESULT_LABEL[m.result]})</span>
-                            )}
-                          </span>
-                        </li>
-                      ))}
-                      {matches.length === 0 && (
-                        <li className="py-2 text-center text-xs text-neutral-500">ยังไม่มีผลการแข่งขัน</li>
-                      )}
-                    </ul>
+                    {rows.length === 0 ? (
+                      <p className="mt-3 py-2 text-center text-xs text-neutral-500">ยังไม่มีผลการแข่งขัน</p>
+                    ) : (
+                      <div className="-mx-6 mt-3 overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
+                              <th className="py-2 pl-6 pr-3">รอบ</th>
+                              <th className="py-2 pr-3">คู่แข่ง</th>
+                              <th className="py-2 pr-3 text-center">ผล</th>
+                              <th className="whitespace-nowrap py-2 pr-3 text-right">คะแนน</th>
+                              <th className="py-2 pr-3 text-right">Diff</th>
+                              <th className="whitespace-nowrap py-2 pr-3 text-right">Diff สะสม</th>
+                              <th className="whitespace-nowrap py-2 pr-6 text-right">Points สะสม</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((m, i) => (
+                              <tr key={i} className="border-b border-neutral-100 last:border-0">
+                                <td className="whitespace-nowrap py-2 pl-6 pr-3 text-neutral-500">
+                                  {m.roundNumber != null ? `R${m.roundNumber}` : "ฝึกซ้อม"}
+                                </td>
+                                <td className="py-2 pr-3">
+                                  {m.absent ? "ไม่ได้มาแข่ง" : m.isBye ? "Bye" : m.opponent}
+                                </td>
+                                <td className="whitespace-nowrap py-2 pr-3 text-center text-neutral-500">
+                                  {m.result ? RESULT_LABEL[m.result] : "—"}
+                                </td>
+                                <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">
+                                  {m.isBye ? `${BYE_SCORE} - 0` : `${m.myScore} - ${m.oppScore}`}
+                                </td>
+                                <td className="py-2 pr-3 text-right tabular-nums">
+                                  {m.diff != null ? signed(m.diff) : "—"}
+                                </td>
+                                <td className="py-2 pr-3 text-right font-medium tabular-nums">
+                                  {signed(m.cumulativeDiff)}
+                                </td>
+                                <td className="py-2 pr-6 text-right font-medium tabular-nums">
+                                  {m.cumulativePoints}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </Card>
                 );
               })}
@@ -257,4 +303,13 @@ export default async function AccountPage(props: PageProps<"/account">) {
       )}
     </main>
   );
+}
+
+type GameDiffSource = Parameters<typeof getMaxScoreConfig>[0];
+
+// Per-game Diff, capped by that Round's Maximum Score exactly as the Scoreboard does.
+function gameDiff(m: GameDiffSource, own: number | null, opp: number | null) {
+  if (own == null || opp == null) return null;
+  const cap = getMaxScoreConfig(m);
+  return cappedDiff(own, opp, cap.enabled, cap.max);
 }
