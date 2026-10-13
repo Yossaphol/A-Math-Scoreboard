@@ -62,6 +62,15 @@ function UserSiteIcon() {
   );
 }
 
+function ScreenIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="size-4 shrink-0" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 20h8M12 16v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function LogoutIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="size-4 shrink-0" aria-hidden="true">
@@ -103,6 +112,15 @@ export default async function AdminProtectedLayout({
           <div className="flex shrink-0 items-center gap-1.5 md:hidden">
             <NotificationBell inbox={inbox} />
             <Link
+              href="/admin/screen"
+              target="_blank"
+              aria-label="เปิดจอห้องแข่ง"
+              title="เปิดจอห้องแข่ง"
+              className="flex size-9 items-center justify-center rounded-full border border-neutral-200 bg-white/80 text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
+            >
+              <ScreenIcon />
+            </Link>
+            <Link
               href="/"
               aria-label="ไปหน้า User"
               title="ไปหน้า User"
@@ -131,6 +149,16 @@ export default async function AdminProtectedLayout({
 
         <div className="hidden space-y-2 border-t border-neutral-200/70 p-3 md:block">
           {/* Counterpart of the "ไปหน้า Admin" item in the public site's user menu. */}
+          {/* New tab: it's meant for the TV/projector in the hall. */}
+          <Link
+            href="/admin/screen"
+            target="_blank"
+            className={`${buttonBase} ${VARIANTS.secondary} ${SIZES.md} w-full justify-start`}
+          >
+            <ScreenIcon />
+            เปิดจอห้องแข่ง
+            <span className="ml-auto text-neutral-400">↗</span>
+          </Link>
           <Link href="/" className={`${buttonBase} ${VARIANTS.secondary} ${SIZES.md} w-full justify-start`}>
             <UserSiteIcon />
             ไปหน้า User
