@@ -1,22 +1,78 @@
 import { requireStaffOrAdmin } from "@/lib/dal";
 import { logoutAction } from "@/lib/actions/auth";
-import { NavLink } from "@/components/ui/NavLink";
-import { Button, LinkButton } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { buttonBase, SIZES, VARIANTS } from "@/components/ui/Button";
+import { AdminNav, type NavGroup } from "@/components/admin/AdminNav";
 import { NotificationBell } from "@/components/ui/alerts/NotificationBell";
 import { RefereeCallAlerts } from "@/components/ui/alerts/RefereeCallAlerts";
+import Link from "next/link";
 
-const ADMIN_NAV = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/tournaments", label: "Tournaments" },
-  { href: "/admin/players", label: "Players" },
-  { href: "/admin/staff", label: "Staff" },
-  { href: "/admin/account-requests", label: "Account Requests" },
-  { href: "/admin/admins", label: "Admins" },
-  { href: "/admin/audit-log", label: "Audit Log" },
+const SCORE_ENTRY = { href: "/admin/score-entry", label: "กรอกผล" };
+
+const ADMIN_NAV: NavGroup[] = [
+  {
+    id: "overview",
+    label: "ภาพรวม",
+    icon: "overview",
+    items: [
+      { href: "/admin", label: "Dashboard", exact: true },
+      { href: "/admin/audit-log", label: "Audit Log" },
+    ],
+  },
+  {
+    id: "competition",
+    label: "การแข่งขัน",
+    icon: "competition",
+    items: [{ href: "/admin/tournaments", label: "Tournaments" }, SCORE_ENTRY],
+  },
+  {
+    id: "people",
+    label: "ผู้เล่น & ทีมงาน",
+    icon: "people",
+    items: [
+      { href: "/admin/players", label: "Players" },
+      { href: "/admin/staff", label: "Staff" },
+      { href: "/admin/account-requests", label: "Account Requests" },
+      { href: "/admin/admins", label: "Admins" },
+    ],
+  },
 ];
 
-const STAFF_NAV = [{ href: "/admin", label: "My Tournaments" }];
+const STAFF_NAV: NavGroup[] = [
+  {
+    id: "competition",
+    label: "การแข่งขัน",
+    icon: "competition",
+    items: [{ href: "/admin", label: "My Tournaments", exact: true }, SCORE_ENTRY],
+  },
+];
+
+function UserSiteIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="size-4 shrink-0" aria-hidden="true">
+      <path
+        d="M4 11.5L12 5l8 6.5V19a1 1 0 01-1 1h-4.5v-5h-5v5H5a1 1 0 01-1-1v-7.5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="size-4 shrink-0" aria-hidden="true">
+      <path
+        d="M14 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4M10 16l-4-4 4-4M6 12h10"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default async function AdminProtectedLayout({
   children,
@@ -40,34 +96,46 @@ export default async function AdminProtectedLayout({
             </p>
           </div>
           <NotificationBell className="hidden shrink-0 md:block" align="left" />
-          <div className="flex shrink-0 items-center gap-1 md:hidden">
+          {/* Narrow screens: the same two actions as icon buttons next to the bell. */}
+          <div className="flex shrink-0 items-center gap-1.5 md:hidden">
             <NotificationBell />
-            <LinkButton href="/" variant="ghost" size="sm">
-              ไปหน้า User
-            </LinkButton>
+            <Link
+              href="/"
+              aria-label="ไปหน้า User"
+              title="ไปหน้า User"
+              className="flex size-9 items-center justify-center rounded-full border border-neutral-200 bg-white/80 text-neutral-600 hover:border-neutral-300 hover:text-neutral-900"
+            >
+              <UserSiteIcon />
+            </Link>
             <form action={logoutAction}>
-              <Button type="submit" variant="ghost" size="sm">
-                Logout
-              </Button>
+              <button
+                type="submit"
+                aria-label="ออกจากระบบ"
+                title="ออกจากระบบ"
+                className="flex size-9 items-center justify-center rounded-full border border-neutral-200 bg-white/80 text-neutral-600 hover:border-red-200 hover:text-danger"
+              >
+                <LogoutIcon />
+              </button>
             </form>
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-4 pb-3 md:mt-6 md:flex-1 md:flex-col md:space-y-1 md:overflow-visible md:pb-0">
-          {nav.map((item) => (
-            <NavLink key={item.href} href={item.href} exact={item.href === "/admin"}>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="hidden space-y-1 p-4 md:block">
+
+        <AdminNav groups={nav} />
+
+        <div className="hidden space-y-2 border-t border-neutral-200/70 p-3 md:block">
           {/* Counterpart of the "ไปหน้า Admin" item in the public site's user menu. */}
-          <LinkButton href="/" variant="ghost" size="sm" className="w-full justify-start">
-            ไปหน้า User →
-          </LinkButton>
+          <Link href="/" className={`${buttonBase} ${VARIANTS.secondary} ${SIZES.md} w-full justify-start`}>
+            <UserSiteIcon />
+            ไปหน้า User
+          </Link>
           <form action={logoutAction}>
-            <Button type="submit" variant="ghost" size="sm" className="w-full justify-start">
-              Logout
-            </Button>
+            <button
+              type="submit"
+              className={`${buttonBase} ${SIZES.md} w-full justify-start text-neutral-600 hover:bg-red-50 hover:text-danger`}
+            >
+              <LogoutIcon />
+              ออกจากระบบ
+            </button>
           </form>
         </div>
       </aside>
