@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import type { Flash } from "@/lib/flash";
 import { showAlert } from "./store";
+import { areResultPopupsHidden } from "./device-prefs";
 
 // Each flash carries its own id, so remembering which ones were already shown keeps a dev
 // double-effect or a re-render of the same server payload from raising it twice.
@@ -16,8 +17,8 @@ export function FlashReceiver({ flash }: { flash: Flash & { id: string } }) {
     document.cookie = "flash=; Max-Age=0; path=/";
     if (shown.has(flash.id)) return;
     shown.add(flash.id);
-    const { id, key, ...alert } = flash;
-    showAlert({ ...alert, id: key ?? id });
+    const { id, key, result, ...alert } = flash;
+    showAlert({ ...alert, id: key ?? id, popup: !(result && areResultPopupsHidden()) });
   }, [flash]);
 
   return null;

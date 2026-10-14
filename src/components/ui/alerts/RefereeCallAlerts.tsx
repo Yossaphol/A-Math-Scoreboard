@@ -7,7 +7,12 @@ import { acknowledgeRefereeCall, resolveRefereeCall } from "@/lib/actions/refere
 import { Button } from "@/components/ui/Button";
 import { dismissAlertsWhere, showAlert } from "./store";
 import { isAudioUnlocked, playAlertChime, subscribeAudioState, unlockAudio } from "./sound";
-import { isRefereeSoundMuted, subscribeRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
+import {
+  areResultPopupsHidden,
+  isRefereeSoundMuted,
+  subscribeRefereeSoundMuted,
+  useRefereeSoundMuted,
+} from "./device-prefs";
 import { getDeviceId, setOnlineStaff } from "./presence-store";
 import type { OnlineStaff } from "@/lib/presence";
 
@@ -94,11 +99,14 @@ export function RefereeCallAlerts() {
           .join(" · ");
         // Keyed per match, so "ผลไม่ตรงกัน" turns into "ยืนยันผลแล้ว" once the players fix it.
         const id = `admin-match-${m.matchId}`;
+        // Switched off at Settings → only the bell's history gets it.
+        const popup = !areResultPopupsHidden();
         if (m.status === "CONFLICT") {
-          showAlert({ id, type: "warning", title: "ผลไม่ตรงกัน", description: `${where} · ${m.player1} vs ${m.player2}` });
+          showAlert({ id, popup, type: "warning", title: "ผลไม่ตรงกัน", description: `${where} · ${m.player1} vs ${m.player2}` });
         } else {
           showAlert({
             id,
+            popup,
             type: m.tie ? "warning" : "success",
             title: m.tie ? "ผลเสมอ — ให้กรรมการตรวจ" : "ยืนยันผลแล้ว",
             description: `${where} · ${m.player1} ${m.player1Score} – ${m.player2Score} ${m.player2}`,

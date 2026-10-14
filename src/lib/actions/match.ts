@@ -163,6 +163,7 @@ export async function adminSetMatchResult(formData: FormData) {
     .join(" · ");
   await setFlash({
     type: "success",
+    result: true,
     title: "บันทึกผลแล้ว",
     description: `${where} · ${match.player1.globalPlayer.name} ${player1Score} – ${player2Score} ${match.player2?.globalPlayer.name ?? ""}`.trim(),
   });

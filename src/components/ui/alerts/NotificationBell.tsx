@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertIconTile } from "./AlertIcon";
 import { clearNotifications, markNotificationsRead, useAlertState } from "./store";
-import { setRefereeSoundMuted, useRefereeSoundMuted } from "./referee-sound-pref";
-import { Switch } from "@/components/ui/Switch";
+import Link from "next/link";
 import { InboxList } from "@/components/account/InboxList";
 import {
   clearNotifications as clearInbox,
@@ -30,6 +29,7 @@ export function NotificationBell({
   className = "",
   align = "right",
   inbox,
+  settingsHref,
 }: {
   className?: string;
   // Stored notifications for this account (Staff invites, replies) — shown above this
@@ -38,9 +38,10 @@ export function NotificationBell({
   // Which edge the panel lines up with — "left" where the bell sits near the left of the
   // screen (the admin sidebar), so the panel doesn't run off it.
   align?: "left" | "right";
+  // Where this device's sound/popup switches live (Admin/Staff only).
+  settingsHref?: string;
 }) {
   const { history, lastReadAt } = useAlertState();
-  const refereeSoundMuted = useRefereeSoundMuted();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const unread = history.filter((h) => h.createdAt > lastReadAt).length + (inbox?.unread ?? 0);
@@ -101,18 +102,29 @@ export function NotificationBell({
           >
             <div className="flex items-center justify-between border-b border-neutral-200/70 px-4 py-3">
               <p className="text-sm font-semibold text-neutral-900">การแจ้งเตือน</p>
-              {(history.length > 0 || (inbox?.items.length ?? 0) > 0) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearNotifications();
-                    if (inbox?.items.length) void clearInbox();
-                  }}
-                  className="text-xs text-neutral-500 hover:text-neutral-900"
-                >
-                  ล้างทั้งหมด
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {settingsHref && (
+                  <Link
+                    href={settingsHref}
+                    onClick={() => setOpen(false)}
+                    className="text-xs text-neutral-500 hover:text-neutral-900"
+                  >
+                    ตั้งค่าเสียง/Popup
+                  </Link>
+                )}
+                {(history.length > 0 || (inbox?.items.length ?? 0) > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearNotifications();
+                      if (inbox?.items.length) void clearInbox();
+                    }}
+                    className="text-xs text-neutral-500 hover:text-neutral-900"
+                  >
+                    ล้างทั้งหมด
+                  </button>
+                )}
+              </div>
             </div>
             {inbox && inbox.items.length > 0 && (
               <div className="border-b border-neutral-200/70">
@@ -122,16 +134,6 @@ export function NotificationBell({
                 </div>
               </div>
             )}
-            <div className="border-b border-neutral-200/70 px-4 py-3">
-              <Switch
-                label="เสียงเรียกกรรมการ"
-                checked={!refereeSoundMuted}
-                onChange={(on) => setRefereeSoundMuted(!on)}
-              />
-              <p className="mt-1 text-[11px] text-neutral-400">
-                {refereeSoundMuted ? "ปิดเสียงไว้ — ยังมี popup แจ้งเตือนเหมือนเดิม" : "ดังจนกว่าจะกดรับเรื่องหรือปิด"} · เฉพาะเครื่องนี้
-              </p>
-            </div>
             {history.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-neutral-400">ยังไม่มีการแจ้งเตือน</p>
             ) : (

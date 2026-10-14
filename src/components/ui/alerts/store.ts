@@ -22,6 +22,8 @@ export type AlertInput = {
   actions?: ReactNode;
   // Called when the person closes it with ✕ (not when it times out or is dismissed in code).
   onClose?: () => void;
+  // false: straight into the notification history, no popup (a switch on the Settings page).
+  popup?: boolean;
 };
 
 // shownAt changes on every (re)show, so a replaced alert's countdown starts over.
@@ -109,6 +111,13 @@ export function showAlert(input: AlertInput) {
     createdAt: alert.createdAt,
   };
   const history = [entry, ...state.history.filter((h) => h.id !== id)].slice(0, HISTORY_LIMIT);
+  if (input.popup === false) {
+    // A popup already up for the same id (shown before the switch) is taken down, not left stale.
+    const next = { ...state, alerts: state.alerts.filter((a) => a.id !== id), history };
+    persist(next);
+    emit(next);
+    return id;
+  }
   const alerts = existing ? state.alerts.map((a) => (a.id === id ? alert : a)) : [...state.alerts, alert];
 
   const next = { ...state, alerts, history };

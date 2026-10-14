@@ -12,6 +12,9 @@ export type Flash = {
   // Alerts sharing a key replace each other on screen — e.g. a match's "results don't match"
   // warning gives way to "confirmed" once the players sort it out.
   key?: string;
+  // A match result — hidden from the popup stack (history only) on a device that switched
+  // "Popup ผลการแข่ง" off at Settings.
+  result?: boolean;
 };
 
 // A short-lived, non-httpOnly cookie carrying a one-shot alert across the redirect or

@@ -21,7 +21,7 @@ const ADMIN_NAV: NavGroup[] = [
     items: [
       { href: "/admin", label: "Dashboard", exact: true },
       { href: "/admin/audit-log", label: "Audit Log" },
-      { href: "/admin/settings", label: "ตั้งค่าระบบ" },
+      { href: "/admin/settings", label: "ตั้งค่า" },
     ],
   },
   {
@@ -49,6 +49,13 @@ const STAFF_NAV: NavGroup[] = [
     label: "การแข่งขัน",
     icon: "competition",
     items: [{ href: "/admin", label: "My Tournaments", exact: true }, SCORE_ENTRY],
+  },
+  {
+    id: "overview",
+    label: "อื่น ๆ",
+    icon: "overview",
+    // Staff only get this device's switches there (sound, popups) — not the system ones.
+    items: [{ href: "/admin/settings", label: "ตั้งค่า" }],
   },
 ];
 
@@ -120,10 +127,10 @@ export default async function AdminProtectedLayout({
               <Badge variant={user.role === "ADMIN" ? "danger" : "info"}>{user.role}</Badge>
             </p>
           </div>
-          <NotificationBell className="hidden shrink-0 md:block" align="left" inbox={inbox} />
+          <NotificationBell className="hidden shrink-0 md:block" align="left" inbox={inbox} settingsHref="/admin/settings" />
           {/* Narrow screens: the same two actions as icon buttons next to the bell. */}
           <div className="flex shrink-0 items-center gap-1.5 md:hidden">
-            <NotificationBell inbox={inbox} />
+            <NotificationBell inbox={inbox} settingsHref="/admin/settings" />
             <Link
               href="/admin/screen"
               target="_blank"
