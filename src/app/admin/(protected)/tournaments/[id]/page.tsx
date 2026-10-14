@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { getScoreboard, type ScoreboardRow } from "@/lib/scoreboard";
+import { getScoreboardView, type ScoreboardRow } from "@/lib/scoreboard";
 import { getFirstSecondScores } from "@/lib/pairing/first-second";
 import { startPairing, confirmPairing, cancelPreview } from "@/lib/actions/pairing";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
@@ -13,10 +13,13 @@ import { NewRoundModal } from "@/components/ui/NewRoundModal";
 import { RoundPreviewBoard, type PreviewMatch } from "@/components/ui/RoundPreviewBoard";
 import { roundLimitOf } from "@/lib/tournament-limits";
 import { healStuckRounds } from "@/lib/match/round-completion";
-import { PAIRING_METHOD_LABEL } from "@/lib/status-labels";
+import { roundMethodLabel } from "@/lib/status-labels";
+import { GroupTabs } from "@/components/ui/GroupTabs";
 
 export default async function TournamentOverviewPage(props: PageProps<"/admin/tournaments/[id]">) {
   const { id } = await props.params;
+  const { group: groupParam } = await props.searchParams;
+  const groupFilter = typeof groupParam === "string" ? groupParam : null;
 
   // Close any fully played round left open, before deciding what "current round" is.
   await healStuckRounds(id);
@@ -32,10 +35,13 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
           table: { select: { tableNumber: true } },
         },
       },
+      groupMethods: { include: { group: true }, orderBy: { group: { createdAt: "asc" } } },
     },
   });
 
-  const rows = await getScoreboard(id);
+  // Always one table here, switched by group tabs — even while a Round is split.
+  const view = await getScoreboardView(id, groupFilter, { tabsOnly: true });
+  const rows = view.rows;
   const statsByPlayer = new Map(rows.map((r) => [r.tournamentPlayerId, r]));
   const firstSecondScores = tournament.useFirstSecond
     ? await getFirstSecondScores(id)
@@ -55,10 +61,14 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
   // Spec §7: with a set number of rounds, "+ New Round" goes away once the last one exists
   // (startPairing refuses it server-side too).
   const roundLimit = roundLimitOf(tournament);
-  const lastRound =
-    roundLimit != null
-      ? await prisma.round.findFirst({ where: { tournamentId: id }, orderBy: { roundNumber: "desc" } })
-      : null;
+  const lastRound = await prisma.round.findFirst({ where: { tournamentId: id }, orderBy: { roundNumber: "desc" } });
+  const groupCounts = await prisma.tournamentPlayer.groupBy({
+    by: ["groupId"],
+    where: { tournamentId: id, status: "ACTIVE" },
+    _count: true,
+  });
+  const activeCountByGroup = new Map(groupCounts.map((g) => [g.groupId, g._count]));
+  const activeTotal = groupCounts.reduce((sum, g) => sum + g._count, 0);
   const allRoundsPlayed = roundLimit != null && (lastRound?.roundNumber ?? 0) >= roundLimit;
 
   const newRoundAction = !currentRound
@@ -75,6 +85,10 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
               tournamentPlayerNo: p.tournamentPlayerNo,
               name: p.globalPlayer.name,
             }))}
+            groups={view.groups.map((g) => ({ ...g, activeCount: activeCountByGroup.get(g.id) ?? 0 }))}
+            // Round 1 of a grouped Tournament starts split; after that, as the last round was.
+            defaultSplit={lastRound ? lastRound.splitByGroup : true}
+            activeTotal={activeTotal}
           />
         )
     : null;
@@ -99,77 +113,115 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
       {rows.length === 0 ? (
         <EmptyState title="ยังไม่มีผู้เล่น" />
       ) : (
-        <Card padding="p-0" className="overflow-x-auto">
-          <table className="w-full text-sm tabular-nums">
-            <thead>
-              <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
-                <th className="py-3 pl-5 pr-3">อันดับ</th>
-                <th className="py-3 pr-3">Name</th>
-                <th className="py-3 pr-3 text-right">Points</th>
-                <th className="py-3 pr-3 text-center">W/T/L</th>
-                <th className="py-3 pr-3 text-right">คะแนนที่ทำได้</th>
-                <th className="py-3 pr-3 text-right">คะแนนคู่ต่อสู้</th>
-                <th className="py-3 pr-3 text-right">Diff</th>
-                {firstSecondScores && (
-                  <th
-                    className="py-3 pr-5 text-right"
-                    title="เริ่มก่อน +2 · เริ่มหลัง +1 · เกมถัดไปค่าน้อยกว่าได้เริ่มก่อน (เท่ากันสุ่ม)"
-                  >
-                    เริ่มก่อนหลัง
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                return (
-                  <tr
-                    key={r.tournamentPlayerId}
-                    className={`border-b border-neutral-100 last:border-0 ${
-                      r.gamesPlayed === 0 || r.status === "WITHDRAWN" ? "text-neutral-400" : ""
-                    }`}
-                  >
-                    <td className="py-3 pl-5 pr-3 text-neutral-500">{r.rank}</td>
-                    <td className="py-3 pr-3">
-                      {r.name}
-                      <span className="ml-1 text-neutral-400">(#{r.tournamentPlayerNo})</span>
-                      {r.status === "WITHDRAWN" && (
-                        <Badge variant="neutral" className="ml-2">
-                          Withdrawn
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="py-3 pr-3 text-right font-medium">{r.points}</td>
-                    <td className="whitespace-nowrap py-3 pr-3 text-center">
-                      {r.wins}
-                      <span className="mx-0.5 text-neutral-300">/</span>
-                      {r.ties}
-                      <span className="mx-0.5 text-neutral-300">/</span>
-                      {r.losses}
-                    </td>
-                    <td className="py-3 pr-3 text-right">{r.ownScoreTotal}</td>
-                    <td className="py-3 pr-3 text-right">{r.opponentScoreTotal}</td>
-                    <td className="py-3 pr-3 text-right">
-                      {r.cumulativeDiff > 0 ? `+${r.cumulativeDiff}` : r.cumulativeDiff}
-                    </td>
-                    {firstSecondScores && (
-                      <td className="py-3 pr-5 text-right">{firstSecondScores.get(r.tournamentPlayerId) ?? 0}</td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
+        <>
+          <GroupTabs
+            basePath={`/admin/tournaments/${id}`}
+            groups={view.groups}
+            totalCount={rows.length}
+            activeGroupId={view.sections[0].group?.id ?? null}
+            split={view.split}
+          />
+          <StandingsTable
+            rows={view.sections[0].rows}
+            firstSecondScores={firstSecondScores}
+            // Everyone in one table — say which group each player came from.
+            showGroup={view.sections[0].group == null && view.groups.length > 0}
+          />
+        </>
       )}
     </div>
   );
 }
 
-type LiveRound = {
+function StandingsTable({
+  rows,
+  firstSecondScores,
+  showGroup,
+}: {
+  rows: ScoreboardRow[];
+  firstSecondScores: Map<string, number> | null;
+  showGroup: boolean;
+}) {
+  return (
+    <Card padding="p-0" className="overflow-x-auto">
+      <table className="w-full text-sm tabular-nums">
+        <thead>
+          <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
+            <th className="py-3 pl-5 pr-3">อันดับ</th>
+            <th className="py-3 pr-3">Name</th>
+            <th className="py-3 pr-3 text-right">Points</th>
+            <th className="py-3 pr-3 text-center">W/T/L</th>
+            <th className="py-3 pr-3 text-right">คะแนนที่ทำได้</th>
+            <th className="py-3 pr-3 text-right">คะแนนคู่ต่อสู้</th>
+            <th className="py-3 pr-3 text-right">Diff</th>
+            {firstSecondScores && (
+              <th
+                className="py-3 pr-5 text-right"
+                title="เริ่มก่อน +2 · เริ่มหลัง +1 · เกมถัดไปค่าน้อยกว่าได้เริ่มก่อน (เท่ากันสุ่ม)"
+              >
+                เริ่มก่อนหลัง
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            return (
+              <tr
+                key={r.tournamentPlayerId}
+                className={`border-b border-neutral-100 last:border-0 ${
+                  r.gamesPlayed === 0 || r.status === "WITHDRAWN" ? "text-neutral-400" : ""
+                }`}
+              >
+                <td className="py-3 pl-5 pr-3 text-neutral-500">{r.rank}</td>
+                <td className="py-3 pr-3">
+                  {r.name}
+                  <span className="ml-1 text-neutral-400">(#{r.tournamentPlayerNo})</span>
+                  {showGroup && r.groupName && (
+                    <Badge variant="neutral" className="ml-2">
+                      {r.groupName}
+                    </Badge>
+                  )}
+                  {r.status === "WITHDRAWN" && (
+                    <Badge variant="neutral" className="ml-2">
+                      Withdrawn
+                    </Badge>
+                  )}
+                </td>
+                <td className="py-3 pr-3 text-right font-medium">{r.points}</td>
+                <td className="whitespace-nowrap py-3 pr-3 text-center">
+                  {r.wins}
+                  <span className="mx-0.5 text-neutral-300">/</span>
+                  {r.ties}
+                  <span className="mx-0.5 text-neutral-300">/</span>
+                  {r.losses}
+                </td>
+                <td className="py-3 pr-3 text-right">{r.ownScoreTotal}</td>
+                <td className="py-3 pr-3 text-right">{r.opponentScoreTotal}</td>
+                <td className="py-3 pr-3 text-right">
+                  {r.cumulativeDiff > 0 ? `+${r.cumulativeDiff}` : r.cumulativeDiff}
+                </td>
+                {firstSecondScores && (
+                  <td className="py-3 pr-5 text-right">{firstSecondScores.get(r.tournamentPlayerId) ?? 0}</td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+type RoundMethod = {
+  pairingMethod: string | null;
+  splitByGroup: boolean;
+  groupMethods: { pairingMethod: string; group: { name: string } }[];
+};
+
+type LiveRound = RoundMethod & {
   id: string;
   roundNumber: number;
-  pairingMethod: string | null;
   matches: {
     id: string;
     status: string;
@@ -197,7 +249,7 @@ function LiveRoundBanner({ tournamentId, round }: { tournamentId: string; round:
     <Card className={`mb-6 ${issues.length > 0 ? "!bg-red-50/60 border-red-200" : "!bg-accent/5 border-accent/20"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-sm text-neutral-700">
-          Round {round.roundNumber} · {PAIRING_METHOD_LABEL[round.pairingMethod ?? ""]} · กำลังแข่งขัน
+          Round {round.roundNumber} · {roundMethodLabel(round)} · กำลังแข่งขัน
         </span>
         <Link href={roundHref} className="shrink-0 text-xs font-medium text-accent hover:underline">
           ไปที่ Round {round.roundNumber} →
@@ -245,10 +297,9 @@ function matchIssue(m: LiveRound["matches"][number]): string | null {
   return null;
 }
 
-type PreviewRound = {
+type PreviewRound = RoundMethod & {
   id: string;
   roundNumber: number;
-  pairingMethod: string | null;
   matches: {
     id: string;
     player1Id: string;
@@ -321,7 +372,7 @@ function RoundPreviewSection({
     <div className="mb-6">
       <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 !bg-amber-50/70 border-amber-200">
         <span className="text-sm text-amber-900">
-          Round {round.roundNumber} · {PAIRING_METHOD_LABEL[round.pairingMethod ?? ""]} · Preview —
+          Round {round.roundNumber} · {roundMethodLabel(round)} · Preview —
           ยังไม่ Confirm
         </span>
         <div className="flex gap-2">

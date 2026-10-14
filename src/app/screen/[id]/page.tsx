@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getScoreboard } from "@/lib/scoreboard";
+import { getScoreboardView } from "@/lib/scoreboard";
 import { hasPracticeAccess } from "@/lib/practice-lock";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { HallScreen, type HallTable } from "@/components/screen/HallScreen";
@@ -50,7 +50,7 @@ export default async function HallScreenPage(props: PageProps<"/screen/[id]">) {
         },
       },
     }),
-    getScoreboard(id),
+    getScoreboardView(id),
   ]);
 
   const tables: HallTable[] = (round?.matches ?? [])
@@ -80,10 +80,13 @@ export default async function HallScreenPage(props: PageProps<"/screen/[id]">) {
           tournamentDone: tournament.status === "COMPLETED",
           round: round ? { number: round.roundNumber, live: round.status === "CONFIRMED" } : null,
           tables,
-          standings: scoreboard
+          // Split by group: each group's table in turn, ranked within the group.
+          standings: scoreboard.sections
+            .flatMap((section) => section.rows)
             .filter((r) => r.status === "ACTIVE")
             .map((r) => ({
               rank: r.rank,
+              group: scoreboard.split ? (r.groupName ?? "ไม่มีกลุ่ม") : null,
               name: r.name,
               nickname: r.nickname,
               points: r.points,

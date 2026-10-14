@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
-import { ROUND_STATUS_BADGE, MATCH_OUTCOME_BADGE, PAIRING_METHOD_LABEL } from "@/lib/status-labels";
+import { ROUND_STATUS_BADGE, MATCH_OUTCOME_BADGE, roundMethodLabel } from "@/lib/status-labels";
 import { AdminMatchCard, adminMatchSearchKey, needsAttention } from "@/components/match/AdminMatchCard";
 import { MatchSearchList } from "@/components/match/MatchSearchList";
 import type { MatchOutcome } from "@/generated/prisma/enums";
@@ -48,6 +48,7 @@ export default async function AdminRoundDetailPage(
         orderBy: { createdAt: "asc" },
       },
       absences: { include: { tournamentPlayer: { include: { globalPlayer: true } } } },
+      groupMethods: { include: { group: true }, orderBy: { group: { createdAt: "asc" } } },
     },
   });
   if (!round || round.tournamentId !== id) notFound();
@@ -259,7 +260,7 @@ export default async function AdminRoundDetailPage(
     <>
       <AttendanceCard
         roundId={round.id}
-        pairingMethod={round.pairingMethod ?? "RANDOM"}
+        methodLabel={roundMethodLabel(round)}
         attendees={attendees}
         absentIds={absentIds}
       />
@@ -319,12 +320,12 @@ export default async function AdminRoundDetailPage(
 // players left without an opponent play each other instead of each getting a Bye.
 function AttendanceCard({
   roundId,
-  pairingMethod,
+  methodLabel,
   attendees,
   absentIds,
 }: {
   roundId: string;
-  pairingMethod: string;
+  methodLabel: string;
   attendees: {
     id: string;
     no: number;
@@ -340,7 +341,7 @@ function AttendanceCard({
       <p className="text-sm font-medium text-neutral-900">เช็คชื่อ — ใครไม่มา?</p>
       <p className="mt-1 text-xs text-neutral-500">
         คนที่ไม่มาได้ L 0-{BYE_SCORE} (-{BYE_SCORE}) · คนที่คู่ไม่มาจะถูกจับคู่ใหม่กันเองแบบ{" "}
-        {PAIRING_METHOD_LABEL[pairingMethod] ?? pairingMethod} · ถ้าเหลือคนเดียวได้ Bye W {BYE_SCORE}-0 ·
+        {methodLabel} · ถ้าเหลือคนเดียวได้ Bye W {BYE_SCORE}-0 ·
         คู่ที่มาครบจะไม่ถูกแตะ
       </p>
       <form action={repairRoundForAbsences} className="mt-3">

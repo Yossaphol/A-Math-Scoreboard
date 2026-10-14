@@ -7,6 +7,7 @@ import {
   searchGlobalPlayersForTournament,
   type GlobalPlayerSearchResult,
 } from "@/lib/actions/players";
+import { createGroup, renameGroup, deleteGroup, setPlayerGroup } from "@/lib/actions/groups";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { inputClass, labelClass } from "@/components/ui/styles";
@@ -304,6 +305,10 @@ export function ImportPlayersModal({
                 <code>globalPlayerId</code> / <code>id</code> / <code>รหัส</code> — <strong>ไม่บังคับ</strong>,
                 ไม่ต้องรู้หรือใส่ก็ได้
               </li>
+              <li>
+                <code>group</code> / <code>กลุ่ม</code> / <code>เพศ</code> — ไม่บังคับ เช่น ชาย / หญิง ใช้แยกจับคู่
+                (ถ้ายังไม่มีกลุ่มชื่อนั้น ระบบจะสร้างให้) ผู้เล่นที่อยู่ใน Tournament แล้วจะถูกอัปเดตกลุ่มตามไฟล์
+              </li>
             </ul>
             <p>
               <strong>ไม่ต้องใส่ Global Player ID ก็นำเข้าได้ปกติ</strong> — ใส่แค่ชื่อพอ ระบบจะค้นหาผู้เล่นที่ชื่อ
@@ -332,6 +337,109 @@ export function ImportPlayersModal({
               </Button>
             </div>
           </form>
+        </ModalShell>
+      )}
+    </>
+  );
+}
+
+/** The player's pairing group, saved as soon as it's picked. */
+export function PlayerGroupSelect({
+  tournamentPlayerId,
+  groupId,
+  groups,
+}: {
+  tournamentPlayerId: string;
+  groupId: string | null;
+  groups: { id: string; name: string }[];
+}) {
+  const [pending, startTransition] = useTransition();
+  return (
+    <select
+      aria-label="กลุ่ม"
+      defaultValue={groupId ?? ""}
+      disabled={pending}
+      onChange={(e) => {
+        const fd = new FormData();
+        fd.set("tournamentPlayerId", tournamentPlayerId);
+        fd.set("groupId", e.target.value);
+        startTransition(() => setPlayerGroup(fd));
+      }}
+      className={`rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs ${
+        groupId ? "text-neutral-900" : "text-neutral-400"
+      } ${pending ? "opacity-60" : ""}`}
+    >
+      <option value="">— ไม่มีกลุ่ม —</option>
+      {groups.map((g) => (
+        <option key={g.id} value={g.id}>
+          {g.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Create / rename / delete the Tournament's pairing groups (ชาย / หญิง, ...). */
+export function ManageGroupsModal({
+  tournamentId,
+  groups,
+}: {
+  tournamentId: string;
+  groups: { id: string; name: string; playerCount: number; usedInRounds: number }[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button type="button" variant="secondary" onClick={() => setOpen(true)} className="shrink-0">
+        กลุ่ม{groups.length > 0 ? ` (${groups.length})` : ""}
+      </Button>
+
+      {open && (
+        <ModalShell title="กลุ่มผู้เล่น" maxWidth="max-w-md" onClose={() => setOpen(false)}>
+          <p className="mt-2 text-xs text-neutral-500">
+            ใช้แยกจับคู่ เช่น ชาย / หญิง — ตอนสร้าง Round ติ๊ก &quot;แยกจับคู่ตามกลุ่ม&quot; แล้วแต่ละกลุ่มจะแข่งกันเอง
+            คะแนนสะสมยังนับรวมเหมือนเดิม เลือกกลุ่มของผู้เล่นแต่ละคนได้ในคอลัมน์ &quot;กลุ่ม&quot;
+          </p>
+
+          <ul className="mt-4 space-y-2">
+            {groups.map((g) => (
+              <li key={g.id} className="flex items-center gap-2">
+                <form action={renameGroup} className="flex flex-1 items-center gap-2">
+                  <input type="hidden" name="groupId" value={g.id} />
+                  <input name="name" defaultValue={g.name} required className={`${inputClass} flex-1`} />
+                  <span className="shrink-0 text-xs text-neutral-400">{g.playerCount} คน</span>
+                  <Button type="submit" variant="secondary" size="sm" className="shrink-0">
+                    บันทึก
+                  </Button>
+                </form>
+                <form action={deleteGroup}>
+                  <input type="hidden" name="groupId" value={g.id} />
+                  <Button
+                    type="submit"
+                    variant="danger"
+                    size="sm"
+                    disabled={g.usedInRounds > 0}
+                    title={g.usedInRounds > 0 ? "ถูกใช้แยกจับคู่ไปแล้ว ลบไม่ได้" : undefined}
+                  >
+                    ลบ
+                  </Button>
+                </form>
+              </li>
+            ))}
+          </ul>
+
+          <form action={createGroup} className="mt-4 flex items-center gap-2 border-t border-neutral-100 pt-4">
+            <input type="hidden" name="tournamentId" value={tournamentId} />
+            <input name="name" required placeholder="ชื่อกลุ่มใหม่ เช่น ชาย" className={`${inputClass} flex-1`} />
+            <Button type="submit" size="sm" className="shrink-0">
+              + เพิ่มกลุ่ม
+            </Button>
+          </form>
+
+          <div className="mt-4 flex justify-end">
+            <CancelButton onClick={() => setOpen(false)} />
+          </div>
         </ModalShell>
       )}
     </>

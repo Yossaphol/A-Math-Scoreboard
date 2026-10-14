@@ -4,7 +4,12 @@ import { buttonBase, SIZES, VARIANTS } from "@/components/ui/Button";
 import { ActionMenu } from "@/components/ui/ActionMenu";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Badge } from "@/components/ui/Badge";
-import { AddPlayerModal, ImportPlayersModal } from "@/components/admin/TournamentPlayerModals";
+import {
+  AddPlayerModal,
+  ImportPlayersModal,
+  ManageGroupsModal,
+  PlayerGroupSelect,
+} from "@/components/admin/TournamentPlayerModals";
 import { ExpandablePlayerRow } from "@/components/admin/ExpandablePlayerRow";
 import { PlayersTable } from "@/components/admin/PlayersTable";
 import { cappedDiff } from "@/lib/match/diff";
@@ -37,11 +42,11 @@ export default async function TournamentPlayersPage(
 ) {
   const { id } = await props.params;
 
-  const [tournament, players, matches, absences] = await Promise.all([
+  const [tournament, players, matches, absences, groups] = await Promise.all([
     prisma.tournament.findUniqueOrThrow({ where: { id } }), // 404s an unknown id
     prisma.tournamentPlayer.findMany({
       where: { tournamentId: id },
-      include: { globalPlayer: true },
+      include: { globalPlayer: true, group: true },
       orderBy: { tournamentPlayerNo: "asc" },
     }),
     prisma.match.findMany({
@@ -54,7 +59,13 @@ export default async function TournamentPlayersPage(
       },
     }),
     prisma.roundAbsence.findMany({ where: { tournamentId: id }, include: { round: true } }),
+    prisma.tournamentGroup.findMany({
+      where: { tournamentId: id },
+      orderBy: { createdAt: "asc" },
+      include: { _count: { select: { players: true, roundMethods: true } } },
+    }),
   ]);
+  const groupOptions = groups.map((g) => ({ id: g.id, name: g.name }));
 
   // Same rule as lockPlayerSlots: the limit counts ACTIVE players only.
   const playerLimit = playerLimitOf(tournament);
@@ -156,6 +167,7 @@ export default async function TournamentPlayersPage(
       <th className="py-3 pr-3">#</th>
       <th className="py-3 pr-3">Name</th>
       <th className="py-3 pr-3">Global Player ID</th>
+      <th className="py-3 pr-3">กลุ่ม</th>
       <th className="py-3 pr-3">Status</th>
       <th className="py-3 pr-5 text-center">Actions</th>
     </tr>
@@ -166,12 +178,18 @@ export default async function TournamentPlayersPage(
     const history = historyByPlayer.get(p.id) ?? [];
     return {
       id: p.id,
-      searchText: [p.globalPlayer.name, p.globalPlayer.nickname, `#${p.tournamentPlayerNo}`, `#${p.globalPlayerId}`]
+      searchText: [
+        p.globalPlayer.name,
+        p.globalPlayer.nickname,
+        `#${p.tournamentPlayerNo}`,
+        `#${p.globalPlayerId}`,
+        p.group?.name,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase(),
       node: (
-        <ExpandablePlayerRow colSpan={5} history={<PlayerHistory history={history} />}>
+        <ExpandablePlayerRow colSpan={6} history={<PlayerHistory history={history} />}>
           <td className="py-3 pr-3 text-neutral-500">{p.tournamentPlayerNo}</td>
           <td className="py-3 pr-3">
             {p.globalPlayer.name}
@@ -180,6 +198,13 @@ export default async function TournamentPlayersPage(
             )}
           </td>
           <td className="py-3 pr-3 text-xs text-neutral-400">#{p.globalPlayerId}</td>
+          <td className="py-3 pr-3" data-no-row-toggle>
+            {groupOptions.length > 0 ? (
+              <PlayerGroupSelect tournamentPlayerId={p.id} groupId={p.groupId} groups={groupOptions} />
+            ) : (
+              <span className="text-xs text-neutral-300">—</span>
+            )}
+          </td>
           <td className="py-3 pr-3">
             <Badge variant={status.variant}>{status.label}</Badge>
           </td>
@@ -253,6 +278,15 @@ export default async function TournamentPlayersPage(
               Active {activeCount}/{playerLimit} คน{fullReason ? " · ครบแล้ว" : ""}
             </span>
           )}
+          <ManageGroupsModal
+            tournamentId={id}
+            groups={groups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              playerCount: g._count.players,
+              usedInRounds: g._count.roundMethods,
+            }))}
+          />
           <AddPlayerModal tournamentId={id} disabledReason={fullReason} />
           <ImportPlayersModal tournamentId={id} disabledReason={fullReason} />
         </>

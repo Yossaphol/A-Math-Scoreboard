@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { assertTournamentAccess } from "@/lib/dal";
-import { generatePairing } from "@/lib/pairing/generate";
+import { generatePairing, generateGroupedPairing } from "@/lib/pairing/generate";
 import { matchStarted, planAbsenceRepair } from "@/lib/pairing/absence-repair";
 import { getFirstSecondScores, assignFirstSecond } from "@/lib/pairing/first-second";
 import { maybeCompleteRound, healStuckRounds } from "@/lib/match/round-completion";
@@ -15,19 +15,23 @@ import { roundLimitOf } from "@/lib/tournament-limits";
 import { logAdminAction } from "@/lib/audit-log";
 import type { PairingMethod } from "@/generated/prisma/enums";
 
+const pairingMethodSchema = z.enum(["RANDOM", "SWISS", "KING_OF_THE_HILL", "ROUND_ROBIN"]);
+
 const startPairingSchema = z.object({
   tournamentId: z.string().min(1),
-  pairingMethod: z.enum(["RANDOM", "SWISS", "KING_OF_THE_HILL", "ROUND_ROBIN"]),
+  // Absent for a Round split by group — each group sends its own (groupMethod:<groupId>).
+  pairingMethod: pairingMethodSchema.optional(),
   maximumScore: z.coerce.number().int().positive().optional(),
 });
 
 // Spec §9/§10/§11: Generate Pairing → Preview, before anything is confirmed.
 export async function startPairing(formData: FormData) {
   const maximumScoreEnabled = formData.get("maximumScoreEnabled") === "on";
+  const splitByGroup = formData.get("splitByGroup") === "on";
 
   const parsed = startPairingSchema.safeParse({
     tournamentId: formData.get("tournamentId"),
-    pairingMethod: formData.get("pairingMethod"),
+    pairingMethod: formData.get("pairingMethod") || undefined,
     maximumScore: formData.get("maximumScore") || undefined,
   });
   if (!parsed.success) {
@@ -79,12 +83,27 @@ export async function startPairing(formData: FormData) {
   const participantIds =
     tournament.mode === "PRACTICE" && rawPlayerIds.length > 0 ? new Set(rawPlayerIds) : undefined;
 
-  const pairs = await generatePairing(
-    tournamentId,
-    roundNumber,
-    pairingMethod as PairingMethod,
-    participantIds
-  );
+  // Split by group: every group of the Tournament with its own method, in the order they
+  // were created (that order also seats them — the first group gets the first tables).
+  let groupMethods: { groupId: string; pairingMethod: PairingMethod }[] = [];
+  if (splitByGroup) {
+    const groups = await prisma.tournamentGroup.findMany({
+      where: { tournamentId },
+      orderBy: { createdAt: "asc" },
+    });
+    if (groups.length === 0) throw new Error("Tournament นี้ยังไม่มีกลุ่ม — สร้างกลุ่มในแท็บ Players ก่อน");
+    groupMethods = groups.map((g) => {
+      const method = pairingMethodSchema.safeParse(formData.get(`groupMethod:${g.id}`));
+      if (!method.success) throw new Error(`ยังไม่ได้เลือกวิธีจับคู่ของกลุ่ม ${g.name}`);
+      return { groupId: g.id, pairingMethod: method.data };
+    });
+  } else if (!pairingMethod) {
+    throw new Error("ยังไม่ได้เลือกวิธีจับคู่");
+  }
+
+  const pairs = splitByGroup
+    ? await generateGroupedPairing(tournamentId, roundNumber, groupMethods, participantIds)
+    : await generatePairing(tournamentId, roundNumber, pairingMethod as PairingMethod, participantIds);
   if (pairs.length === 0) {
     throw new Error("ไม่มีผู้เล่น Active ให้จับคู่");
   }
@@ -126,7 +145,9 @@ export async function startPairing(formData: FormData) {
       data: {
         tournamentId,
         roundNumber,
-        pairingMethod: pairingMethod as PairingMethod,
+        pairingMethod: splitByGroup ? null : (pairingMethod as PairingMethod),
+        splitByGroup,
+        groupMethods: { create: groupMethods },
         status: "PREVIEW",
         maximumScoreEnabled,
         maximumScore: maximumScoreEnabled ? maximumScore ?? tournament.defaultMaximumScore : null,
@@ -341,6 +362,7 @@ export async function repairRoundForAbsences(formData: FormData) {
       tournament: true,
       matches: { include: { submissions: true } },
       absences: true,
+      groupMethods: true,
     },
   });
   const admin = await assertTournamentAccess(round.tournamentId);
@@ -378,16 +400,25 @@ export async function repairRoundForAbsences(formData: FormData) {
     return;
   }
 
+  // A split Round re-pairs within each group too — never across them.
   const pairs =
-    toPair.length > 0
-      ? await generatePairing(
-          round.tournamentId,
-          round.roundNumber,
-          round.pairingMethod ?? "RANDOM",
-          new Set(toPair),
-          { excludeRoundId: round.id }
-        )
-      : [];
+    toPair.length === 0
+      ? []
+      : round.splitByGroup
+        ? await generateGroupedPairing(
+            round.tournamentId,
+            round.roundNumber,
+            round.groupMethods,
+            new Set(toPair),
+            { excludeRoundId: round.id }
+          )
+        : await generatePairing(
+            round.tournamentId,
+            round.roundNumber,
+            round.pairingMethod ?? "RANDOM",
+            new Set(toPair),
+            { excludeRoundId: round.id }
+          );
   // generatePairing only pools ACTIVE players — refuse rather than silently drop anyone.
   const paired = new Set(pairs.flatMap((p) => [p.player1Id, p.player2Id].filter((id): id is string => !!id)));
   const unpaired = toPair.filter((id) => !paired.has(id));

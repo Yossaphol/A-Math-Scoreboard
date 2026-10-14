@@ -6,11 +6,13 @@ export type RawPlayerRow = {
   name?: string;
   nickname?: string;
   globalPlayerId?: number;
+  group?: string; // pairing group name, e.g. ชาย / หญิง — created if the Tournament lacks it
 };
 
 const NAME_KEYS = ["name", "ชื่อ"];
 const NICKNAME_KEYS = ["nickname", "ชื่อเล่น"];
 const ID_KEYS = ["globalplayerid", "global player id", "playerid", "player id", "id", "รหัส"];
+const GROUP_KEYS = ["group", "กลุ่ม", "gender", "เพศ"];
 
 // Column headers are matched case-insensitively (and a couple of Thai aliases), since a
 // spreadsheet someone hands-typed is never going to match a fixed casing exactly.
@@ -31,7 +33,7 @@ function normalizeRow(raw: Record<string, unknown>): RawPlayerRow {
   const idStr = pick(ID_KEYS);
   const id = idStr && /^\d+$/.test(idStr) ? Number(idStr) : undefined;
 
-  return { name: pick(NAME_KEYS), nickname: pick(NICKNAME_KEYS), globalPlayerId: id };
+  return { name: pick(NAME_KEYS), nickname: pick(NICKNAME_KEYS), globalPlayerId: id, group: pick(GROUP_KEYS) };
 }
 
 const MAX_ROWS = 1000;

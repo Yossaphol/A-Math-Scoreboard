@@ -223,6 +223,7 @@ export async function importPlayersToTournament(formData: FormData) {
     addedNew: 0,
     addedExisting: 0,
     skippedDuplicate: 0,
+    groupUpdated: 0,
     skippedFull: 0,
     errors: [] as string[],
   };
@@ -239,11 +240,48 @@ export async function importPlayersToTournament(formData: FormData) {
     });
     let nextNo = (last?.tournamentPlayerNo ?? 0) + 1;
 
+    // Group column: matched to the Tournament's groups by name, creating any that are missing.
+    const groupIds = new Map(
+      (await tx.tournamentGroup.findMany({ where: { tournamentId } })).map((g) => [g.name, g.id])
+    );
+    async function groupIdFor(name: string | undefined): Promise<string | undefined> {
+      if (!name) return undefined;
+      let groupId = groupIds.get(name);
+      if (!groupId) {
+        groupId = (await tx.tournamentGroup.create({ data: { tournamentId, name } })).id;
+        groupIds.set(name, groupId);
+      }
+      return groupId;
+    }
+    // Re-importing the roster with a group column fills in groups for those already in.
+    async function updateGroupOf(player: { id: string; groupId: string | null }, groupName: string | undefined) {
+      const groupId = await groupIdFor(groupName);
+      if (groupId && player.groupId !== groupId) {
+        await tx.tournamentPlayer.update({ where: { id: player.id }, data: { groupId } });
+        summary.groupUpdated += 1;
+      } else {
+        summary.skippedDuplicate += 1;
+      }
+    }
+
     for (const [index, row] of rows.entries()) {
       // Once the roster is full, the remaining rows are skipped before they can create a
       // new Global Player that would never make it into this Tournament.
       if (remaining <= 0) {
-        summary.skippedFull += 1;
+        // …though a row for someone already in can still set their group.
+        const inTournament = row.group
+          ? await tx.tournamentPlayer.findFirst({
+              where: {
+                tournamentId,
+                globalPlayer:
+                  row.globalPlayerId != null
+                    ? { id: row.globalPlayerId }
+                    : { name: { equals: row.name ?? "", mode: "insensitive" } },
+              },
+            })
+          : null;
+        if (inTournament) await updateGroupOf(inTournament, row.group);
+        else summary.skippedFull += 1;
         continue;
       }
       try {
@@ -280,12 +318,18 @@ export async function importPlayersToTournament(formData: FormData) {
           where: { tournamentId_globalPlayerId: { tournamentId, globalPlayerId } },
         });
         if (already) {
-          summary.skippedDuplicate += 1;
+          await updateGroupOf(already, row.group);
           continue;
         }
 
         await tx.tournamentPlayer.create({
-          data: { tournamentId, globalPlayerId, tournamentPlayerNo: nextNo, status: "ACTIVE" },
+          data: {
+            tournamentId,
+            globalPlayerId,
+            tournamentPlayerNo: nextNo,
+            status: "ACTIVE",
+            groupId: await groupIdFor(row.group),
+          },
         });
         nextNo += 1;
         remaining -= 1;
@@ -302,6 +346,9 @@ export async function importPlayersToTournament(formData: FormData) {
   const parts = [`เพิ่มใหม่ ${summary.addedNew} คน`, `ใช้ผู้เล่นเดิม ${summary.addedExisting} คน`];
   if (summary.skippedDuplicate > 0) {
     parts.push(`ข้าม ${summary.skippedDuplicate} คน (มีอยู่ใน Tournament นี้แล้ว)`);
+  }
+  if (summary.groupUpdated > 0) {
+    parts.push(`อัปเดตกลุ่ม ${summary.groupUpdated} คน (มีอยู่ใน Tournament นี้แล้ว)`);
   }
   if (summary.skippedFull > 0) {
     parts.push(`ไม่ได้นำเข้า ${summary.skippedFull} แถว (ผู้เล่นครบ ${playerLimit} คนตามที่กำหนดไว้แล้ว)`);

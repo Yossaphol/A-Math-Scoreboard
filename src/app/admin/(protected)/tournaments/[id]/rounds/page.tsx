@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LinkRow } from "@/components/ui/LinkRow";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
-import { PAIRING_METHOD_LABEL, ROUND_STATUS_BADGE } from "@/lib/status-labels";
+import { roundMethodLabel, ROUND_STATUS_BADGE } from "@/lib/status-labels";
 import { roundLimitOf } from "@/lib/tournament-limits";
 import { healStuckRounds } from "@/lib/match/round-completion";
 
@@ -24,6 +24,7 @@ export default async function AdminRoundsPage(props: PageProps<"/admin/tournamen
       include: {
         matches: { select: { status: true, byeClaimedById: true, player2Id: true } },
         _count: { select: { absences: true } },
+        groupMethods: { include: { group: true }, orderBy: { group: { createdAt: "asc" } } },
       },
     }),
   ]);
@@ -84,7 +85,7 @@ export default async function AdminRoundsPage(props: PageProps<"/admin/tournamen
                       {r.roundNumber}
                     </Link>
                   </td>
-                  <td className="py-3 pr-3">{r.pairingMethod ? PAIRING_METHOD_LABEL[r.pairingMethod] : "—"}</td>
+                  <td className="py-3 pr-3">{roundMethodLabel(r)}</td>
                   <td className="py-3 pr-3">{r.maximumScoreEnabled ? r.maximumScore : "ปิด"}</td>
                   <td className="py-3 pr-3">
                     {showProgress ? (

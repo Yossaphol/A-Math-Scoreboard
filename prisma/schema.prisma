@@ -170,6 +170,7 @@ model Tournament {
   matches      Match[]
   absences     RoundAbsence[]
   refereeCalls RefereeCall[]
+  groups       TournamentGroup[]
 
   @@index([status])
 }
@@ -196,14 +197,17 @@ model TournamentStaff {
 
 // Tournament Player ID — restarts at 1 for every tournament (spec §1).
 model TournamentPlayer {
-  id                 String       @id @default(cuid())
+  id                 String           @id @default(cuid())
   tournamentId       String
-  tournament         Tournament   @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournament         Tournament       @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   globalPlayerId     Int
-  globalPlayer       GlobalPlayer @relation(fields: [globalPlayerId], references: [id])
+  globalPlayer       GlobalPlayer     @relation(fields: [globalPlayerId], references: [id])
   tournamentPlayerNo Int
-  status             PlayerStatus @default(ACTIVE)
-  createdAt          DateTime     @default(now())
+  status             PlayerStatus     @default(ACTIVE)
+  // Optional pairing group (e.g. ชาย / หญิง) — only matters to a Round with splitByGroup.
+  groupId            String?
+  group              TournamentGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  createdAt          DateTime         @default(now())
 
   matchesAsPlayer1 Match[]        @relation("MatchPlayer1")
   matchesAsPlayer2 Match[]        @relation("MatchPlayer2")
@@ -229,6 +233,13 @@ model Round {
   maximumScoreEnabled Boolean @default(true)
   maximumScore        Int?    @default(350)
 
+  // Paired within each TournamentGroup instead of across everyone — e.g. men and women play
+  // among themselves for Games 1-4, then together from Game 5. Each group has its own method
+  // (groupMethods) and pairingMethod stays null. The Scoreboard shows one table per group
+  // while the latest Round is split (src/lib/scoreboard.ts).
+  splitByGroup Boolean            @default(false)
+  groupMethods RoundGroupMethod[]
+
   status      RoundStatus @default(DRAFT)
   createdAt   DateTime    @default(now())
   confirmedAt DateTime?
@@ -237,6 +248,33 @@ model Round {
   absences RoundAbsence[]
 
   @@unique([tournamentId, roundNumber])
+}
+
+// A per-tournament pairing group, named by Admin/Staff (ชาย / หญิง, ประถม / มัธยม, ...). Points
+// and Diff are never kept per group — a group only decides who may be paired together in a
+// split Round, and which players share a Scoreboard table while the split lasts.
+model TournamentGroup {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  name         String
+  createdAt    DateTime   @default(now())
+
+  players      TournamentPlayer[]
+  roundMethods RoundGroupMethod[]
+
+  @@unique([tournamentId, name])
+}
+
+// The pairing method one group used in a split Round (Round.splitByGroup).
+model RoundGroupMethod {
+  roundId       String
+  round         Round           @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  groupId       String
+  group         TournamentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  pairingMethod PairingMethod
+
+  @@id([roundId, groupId])
 }
 
 // A player who was due to play this Round but never showed up. They're taken out of the

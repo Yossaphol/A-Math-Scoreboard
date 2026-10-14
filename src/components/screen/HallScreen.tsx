@@ -15,6 +15,8 @@ export type HallTable = {
 
 export type HallStanding = {
   rank: number;
+  // Set while the Scoreboard is split by group: rank is then within this group.
+  group: string | null;
   name: string;
   nickname: string | null;
   points: number;
@@ -334,11 +336,12 @@ function StandingsBoard({ rows, twoCols }: { rows: HallStanding[]; twoCols: bool
           </div>
           <ol>
             {col.map((r) => (
-              <li key={`${r.rank}-${r.name}`} className={`${s.row} ${r.rank <= 3 ? s.top3 : ""}`}>
+              <li key={`${r.group}-${r.rank}-${r.name}`} className={`${s.row} ${r.rank <= 3 ? s.top3 : ""}`}>
                 <span className={s.rk}>{r.rank}</span>
                 <span className={s.who}>
                   {r.name}
                   {r.nickname && <small>{r.nickname}</small>}
+                  {r.group && <small>{r.group}</small>}
                 </span>
                 <span className={s.pts}>{r.points}</span>
                 <span className={s.wtl}>

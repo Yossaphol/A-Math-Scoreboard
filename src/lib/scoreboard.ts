@@ -12,6 +12,8 @@ export type ScoreboardRow = {
   name: string;
   nickname: string | null;
   status: "ACTIVE" | "WITHDRAWN";
+  groupId: string | null;
+  groupName: string | null;
   gamesPlayed: number;
   wins: number;
   ties: number;
@@ -29,7 +31,7 @@ export type ScoreboardRow = {
 export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow[]> {
   const players = await prisma.tournamentPlayer.findMany({
     where: { tournamentId },
-    include: { globalPlayer: true },
+    include: { globalPlayer: true, group: true },
     orderBy: { tournamentPlayerNo: "asc" },
   });
 
@@ -43,6 +45,8 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
       name: p.globalPlayer.name,
       nickname: p.globalPlayer.nickname,
       status: p.status,
+      groupId: p.groupId,
+      groupName: p.group?.name ?? null,
       gamesPlayed: 0,
       wins: 0,
       ties: 0,
@@ -115,9 +119,17 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
     apply(a.tournamentPlayerId, "LOSS", 0, BYE_SCORE, -BYE_SCORE);
   }
 
-  const sorted = Array.from(rows.values()).sort(
-    (a, b) => b.points - a.points || b.cumulativeDiff - a.cumulativeDiff
-  );
+  return rankRows(Array.from(rows.values()));
+}
+
+/**
+ * Sorts by Points, then Diff, and numbers the ranks — on whatever subset it's given, so the
+ * same rule ranks the whole field or a single group. Returns new row objects.
+ */
+export function rankRows(rows: ScoreboardRow[]): ScoreboardRow[] {
+  const sorted = rows
+    .map((r) => ({ ...r }))
+    .sort((a, b) => b.points - a.points || b.cumulativeDiff - a.cumulativeDiff);
   // "#" is the standing rank, not the fixed Tournament Player No (shown next to the name
   // instead). Players level on both points and Diff share a rank (1, 2, 2, 4) rather than
   // being split by an order the scoring rules don't define.
@@ -127,4 +139,62 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
       prev && prev.points === row.points && prev.cumulativeDiff === row.cumulativeDiff ? prev.rank : i + 1;
   });
   return sorted;
+}
+
+export type ScoreboardSection = {
+  // null: the whole field, or (while split) the players not in any group.
+  group: { id: string; name: string } | null;
+  rows: ScoreboardRow[];
+};
+
+export type ScoreboardView = {
+  rows: ScoreboardRow[]; // everyone, overall rank
+  groups: { id: string; name: string; playerCount: number }[];
+  // The latest Round paired within groups — show one table per group until a Round doesn't.
+  split: boolean;
+  sections: ScoreboardSection[];
+};
+
+/**
+ * The Scoreboard as it should be displayed. While the latest Round is split by group, one
+ * table per group, ranked within the group. Otherwise one table for everyone — or, with
+ * `groupFilter`, just that group's players, ranked among themselves (points always carry
+ * over in full; a group never has a separate tally).
+ *
+ * `tabsOnly` (the admin Scoreboard): never stack one table per group — always one table,
+ * everyone or the `groupFilter` group, whether or not the latest Round is split.
+ */
+export async function getScoreboardView(
+  tournamentId: string,
+  groupFilter?: string | null,
+  { tabsOnly = false }: { tabsOnly?: boolean } = {}
+): Promise<ScoreboardView> {
+  const [rows, groupList, latestRound] = await Promise.all([
+    getScoreboard(tournamentId),
+    prisma.tournamentGroup.findMany({
+      where: { tournamentId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.round.findFirst({
+      where: { tournamentId },
+      orderBy: { roundNumber: "desc" },
+      select: { splitByGroup: true },
+    }),
+  ]);
+  const groups = groupList.map((g) => ({ ...g, playerCount: rows.filter((r) => r.groupId === g.id).length }));
+  const split = groups.length > 0 && !!latestRound?.splitByGroup;
+
+  let sections: ScoreboardSection[];
+  if (split && !tabsOnly) {
+    sections = groups.map((g) => ({ group: g, rows: rankRows(rows.filter((r) => r.groupId === g.id)) }));
+    const ungrouped = rows.filter((r) => r.groupId == null);
+    if (ungrouped.length > 0) sections.push({ group: null, rows: rankRows(ungrouped) });
+  } else {
+    const filtered = groups.find((g) => g.id === groupFilter);
+    sections = filtered
+      ? [{ group: filtered, rows: rankRows(rows.filter((r) => r.groupId === filtered.id)) }]
+      : [{ group: null, rows }];
+  }
+  return { rows, groups, split, sections };
 }

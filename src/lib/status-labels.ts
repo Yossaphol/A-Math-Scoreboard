@@ -7,6 +7,21 @@ export const PAIRING_METHOD_LABEL: Record<string, string> = {
   ROUND_ROBIN: "Round Robin",
 };
 
+/** How a Round was paired — a split Round names each group's own method. */
+export function roundMethodLabel(round: {
+  pairingMethod: string | null;
+  splitByGroup: boolean;
+  groupMethods?: { pairingMethod: string; group: { name: string } }[];
+}): string {
+  if (round.splitByGroup) {
+    const parts = (round.groupMethods ?? []).map(
+      (g) => `${g.group.name}: ${PAIRING_METHOD_LABEL[g.pairingMethod] ?? g.pairingMethod}`
+    );
+    return parts.length > 0 ? `แยกกลุ่ม (${parts.join(" · ")})` : "แยกกลุ่ม";
+  }
+  return round.pairingMethod ? (PAIRING_METHOD_LABEL[round.pairingMethod] ?? round.pairingMethod) : "—";
+}
+
 export const STAFF_STATUS_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {
   INVITED: { label: "รอตอบรับ", variant: "warning" },
   ACTIVE: { label: "ใช้งาน", variant: "success" },

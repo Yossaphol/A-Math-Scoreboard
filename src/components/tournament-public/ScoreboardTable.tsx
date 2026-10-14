@@ -1,14 +1,54 @@
-import { getScoreboard } from "@/lib/scoreboard";
+import { getScoreboardView, type ScoreboardRow } from "@/lib/scoreboard";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { GroupTabs } from "@/components/ui/GroupTabs";
 
-/** Shared body of the /t/[id]/scoreboard and /practice/[id]/scoreboard pages. */
-export async function ScoreboardTable({ tournamentId }: { tournamentId: string }) {
-  const rows = await getScoreboard(tournamentId);
+/** Shared body of the /t/[id]/scoreboard and /practice/[id]/scoreboard pages. While the
+ * latest Round is split by group, one table per group; otherwise one table, filterable by
+ * group. */
+export async function ScoreboardTable({
+  tournamentId,
+  basePath,
+  groupFilter,
+}: {
+  tournamentId: string;
+  basePath: string;
+  groupFilter: string | null;
+}) {
+  const view = await getScoreboardView(tournamentId, groupFilter);
 
-  if (rows.length === 0) return <EmptyState title="ยังไม่มีผู้เล่น" />;
+  if (view.rows.length === 0) return <EmptyState title="ยังไม่มีผู้เล่น" />;
 
+  return (
+    <div>
+      {!view.split && (
+        <GroupTabs
+          basePath={basePath}
+          groups={view.groups}
+          totalCount={view.rows.length}
+          activeGroupId={view.sections[0].group?.id ?? null}
+        />
+      )}
+      {view.sections.map((section) => (
+        <div key={section.group?.id ?? "all"} className="mb-8 last:mb-0">
+          {view.split && (
+            <p className="mb-3 text-sm font-semibold text-neutral-900">
+              {section.group?.name ?? "ไม่มีกลุ่ม"}{" "}
+              <span className="font-normal text-neutral-400">({section.rows.length} คน)</span>
+            </p>
+          )}
+          <RankTable
+            rows={section.rows}
+            showGroup={!view.split && section.group == null && view.groups.length > 0}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RankTable({ rows, showGroup }: { rows: ScoreboardRow[]; showGroup: boolean }) {
   return (
     <div className="relative">
       <Card padding="p-0" className="overflow-x-auto">
@@ -32,6 +72,11 @@ export async function ScoreboardTable({ tournamentId }: { tournamentId: string }
                   <span className="inline-block w-5 text-neutral-400">{r.rank}</span>
                   <span className="font-medium text-neutral-900">{r.name}</span>
                   <span className="ml-1 text-xs text-neutral-400">(#{r.tournamentPlayerNo})</span>
+                  {showGroup && r.groupName && (
+                    <Badge variant="neutral" className="ml-2">
+                      {r.groupName}
+                    </Badge>
+                  )}
                   {r.status === "WITHDRAWN" && (
                     <Badge variant="neutral" className="ml-2">
                       Withdrawn
