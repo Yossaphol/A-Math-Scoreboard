@@ -15,7 +15,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
   const showDevLogin = process.env.NODE_ENV !== "production";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
+    <main className="mx-auto w-full flex min-h-screen max-w-sm flex-col justify-center px-4">
       <Card>
         <h1 className="text-xl font-semibold text-neutral-900">เข้าสู่ระบบ</h1>
         <p className="mt-1 text-sm text-neutral-500">

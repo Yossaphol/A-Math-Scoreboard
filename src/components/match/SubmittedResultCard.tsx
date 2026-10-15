@@ -9,8 +9,9 @@ import { Button, LinkButton } from "@/components/ui/Button";
  * used to be the same form again (pre-filled, "แก้ไขผล"), which read as "you're on the edit
  * page" — and on a shared phone the next player filled that form in, overwriting the first
  * player's side instead of adding their own, so the match could never confirm. Now it's an
- * explicit waiting state: the sent result, who it's waiting on, a way to hand the phone to
- * the other player, and editing only on request.
+ * explicit waiting state: the sent result, who it's waiting on, and editing only on request.
+ * A player who can't send their own side gets a referee, not this phone — handing it over let
+ * one person enter both sides.
  *
  * Keyed by the submission's updatedAt by the caller, so sending an edit remounts it back out
  * of editing mode.
@@ -18,12 +19,12 @@ import { Button, LinkButton } from "@/components/ui/Button";
 export function SubmittedResultCard({
   summary,
   waitingFor,
-  switchSideHref,
+  canCallReferee,
   editForm,
 }: {
   summary: React.ReactNode;
   waitingFor: string;
-  switchSideHref: string;
+  canCallReferee: boolean;
   editForm: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -55,10 +56,13 @@ export function SubmittedResultCard({
         รอ {waitingFor} ส่งผลเพื่อยืนยัน
       </p>
       <p className="mt-1 text-xs text-neutral-400">หน้านี้จะอัปเดตเองเมื่ออีกฝ่ายส่งผล</p>
+      {canCallReferee && (
+        <p className="mt-1 text-xs text-neutral-400">ถ้า {waitingFor} ส่งผลไม่ได้ กด “เรียกกรรมการ” ด้านล่าง</p>
+      )}
 
       <div className="mt-5 flex flex-col gap-2">
-        <LinkButton href={switchSideHref} variant="secondary" className="w-full">
-          ให้ {waitingFor} ส่งผลจากเครื่องนี้
+        <LinkButton href="/" variant="secondary" className="w-full">
+          กลับหน้าหลัก
         </LinkButton>
         <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
           แก้ไขผลที่ส่งไป

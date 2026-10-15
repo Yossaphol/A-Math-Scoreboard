@@ -7,6 +7,7 @@ import { ResultSummary } from "@/components/match/ResultSummary";
 import { SubmittedResultCard } from "@/components/match/SubmittedResultCard";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { Card } from "@/components/ui/Card";
+import { LinkButton } from "@/components/ui/Button";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { RefereeCallBar, getOpenRefereeCall } from "@/components/match/RefereeCallBar";
@@ -52,7 +53,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
       );
     }
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">
+      <main className="mx-auto w-full flex min-h-screen max-w-md flex-col justify-center px-4">
         <Card className="text-center">
           <p className="text-sm text-neutral-500">{result.error}</p>
         </Card>
@@ -64,7 +65,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
 
   if (match.isBye) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 pb-24">
+      <main className="mx-auto w-full flex min-h-screen max-w-md flex-col justify-center px-4 pb-24">
         <Card className="text-center">
           <p className="text-xs text-neutral-500">
             {tournament.name} · Table {table.tableNumber}
@@ -105,17 +106,33 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
   // being sorted out, or Staff deciding on a no-show claim.
   const waitingOnOthers = match.status === "CONFLICT" || !!claimantName || !!mySubmission;
   // The referee bar refreshes faster on its own while a call is open — no need for both.
+  // Back to "which side are you?" while filling in a side's form. Not once it's sent: from
+  // there the other player sends from their own phone or calls a referee.
+  const showBack = !!chosenSide && !mySubmission && match.status !== "CONFLICT";
 
   return (
-    <main className="mx-auto max-w-md px-4 pb-28 pt-10">
+    <main className="mx-auto w-full max-w-md px-4 pb-28 pt-10">
       {waitingOnOthers && !refereeCall && <AutoRefresh />}
-      <p className="text-center text-xs text-neutral-500">
-        {tournament.name} · Table {table.tableNumber}
-      </p>
-      <h1 className="mt-1 text-center text-lg font-semibold text-neutral-900">
-        {player1Name} vs {player2Name}
-      </h1>
-      <p className="text-center text-xs text-neutral-400">รอบที่ {round.roundNumber}</p>
+      <header className="relative px-12 text-center">
+        {showBack && (
+          <Link
+            href={`/table/${qrToken}`}
+            aria-label="กลับไปเลือกฝั่ง"
+            className="absolute left-0 top-1/2 flex size-11 -translate-x-2 -translate-y-1/2 items-center justify-center rounded-full text-neutral-600 transition-colors hover:bg-black/5 active:bg-black/10"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="size-6" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </Link>
+        )}
+        <p className="text-xs text-neutral-500">
+          {tournament.name} · Table {table.tableNumber}
+        </p>
+        <h1 className="mt-1 text-lg font-semibold text-neutral-900">
+          {player1Name} vs {player2Name}
+        </h1>
+        <p className="text-xs text-neutral-400">รอบที่ {round.roundNumber}</p>
+      </header>
 
       {claimantName && (
         <Card className="mt-4 text-center">
@@ -172,7 +189,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
               />
             }
             waitingFor={nameOf(otherSide)}
-            switchSideHref={`/table/${qrToken}?side=${otherSide}`}
+            canCallReferee={liveFeedEnabled}
             editForm={
               <ResultForm
                 action={submitMatchResult}
@@ -191,10 +208,7 @@ export default async function TableMatchPage(props: PageProps<"/table/[qrToken]"
           // other side's report so each side's entry stays independent (spec §13).
           <>
             <p className="text-center text-xs text-neutral-400">
-              กำลังส่งผลในนาม <span className="font-medium text-neutral-700">{nameOf(chosenSide)}</span> ·{" "}
-              <Link href={`/table/${qrToken}`} className="hover:underline">
-                ไม่ใช่ฝั่งนี้? เลือกใหม่
-              </Link>
+              กำลังส่งผลในนาม <span className="font-medium text-neutral-700">{nameOf(chosenSide)}</span>
             </p>
             <ResultForm
               key={chosenSide}
@@ -264,7 +278,7 @@ function ConfirmedResult({
   bottomBar: React.ReactNode;
 }) {
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 pb-24">
+    <main className="mx-auto w-full flex min-h-screen max-w-md flex-col justify-center px-4 pb-24">
       <Card className="text-center">
         <p className="text-xs text-neutral-500">{heading}</p>
         <p className="mt-2 text-sm font-medium text-success">ผลการแข่งขันยืนยันแล้ว</p>
@@ -278,6 +292,9 @@ function ConfirmedResult({
           <PlayerResult name={player2.globalPlayer.name} score={match.finalPlayer2Score} result={match.player2Result} />
         </div>
         <p className="mt-4 text-xs text-neutral-400">{footer}</p>
+        <LinkButton href="/" variant="secondary" className="mt-5 w-full">
+          กลับหน้าหลัก
+        </LinkButton>
       </Card>
       {bottomBar}
     </main>

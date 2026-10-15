@@ -23,7 +23,7 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">
+    <main className="mx-auto w-full flex min-h-screen max-w-md flex-col justify-center px-4">
       <Card className="text-center">
         <p className="text-sm font-medium text-neutral-900">เกิดข้อผิดพลาด</p>
         <p className="mt-1 text-xs text-neutral-500">กรุณาลองใหม่อีกครั้ง หรือกลับไปหน้าแรก</p>

@@ -20,7 +20,7 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
   const tournament = await prisma.tournament.findUnique({ where: { selfServiceToken: token } });
   if (!tournament || tournament.mode !== "PRACTICE") {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">
+      <main className="mx-auto w-full flex min-h-screen max-w-md flex-col justify-center px-4">
         <Card className="text-center">
           <p className="text-sm text-neutral-500">ไม่พบลิงก์นี้</p>
         </Card>
@@ -39,7 +39,7 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
 
   if (!selfPlayer) {
     return (
-      <main className="mx-auto max-w-md px-4 py-10">
+      <main className="mx-auto w-full max-w-md px-4 py-10">
         <h1 className="text-center text-lg font-semibold text-neutral-900">
           {tournament.name} — เลือกชื่อคุณ
         </h1>
@@ -90,7 +90,7 @@ export default async function PracticeSelfServicePage(props: PageProps<"/practic
   const opponents = activePlayers.filter((p) => p.id !== selfPlayer.id);
 
   return (
-    <main className="mx-auto max-w-md px-4 py-10">
+    <main className="mx-auto w-full max-w-md px-4 py-10">
       {/* Picks up the opponent confirming (or disputing) a game without a manual reload. */}
       {pendingMatches.length > 0 && <AutoRefresh />}
       <p className="text-center text-xs text-neutral-500">{tournament.name}</p>
