@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import s from "./HallScreen.module.css";
 
 export type HallTable = {
@@ -33,6 +33,8 @@ export type HallData = {
   round: { number: number; live: boolean } | null;
   tables: HallTable[];
   standings: HallStanding[];
+  // Bottom-right QR into the site, so people in the hall can follow on their phones.
+  siteQr: { url: string; dataUrl: string };
 };
 
 const PAGE_MS = 10_000;
@@ -43,6 +45,42 @@ const STANDINGS_MS = 12_000;
 const PAIRING_ONLY_BELOW = 0.25;
 
 type View = "tables" | "standings";
+// "auto" lets the screen decide (below); the other two pin a view until changed.
+type Mode = "auto" | View;
+const MODES: { mode: Mode; label: string }[] = [
+  { mode: "auto", label: "อัตโนมัติ" },
+  { mode: "tables", label: "คู่แข่ง" },
+  { mode: "standings", label: "อันดับ" },
+];
+// Per device: the TV keeps its choice across a reload. localStorage can be missing or throw;
+// then the choice just doesn't survive one.
+const MODE_KEY = "hall-screen-mode";
+const modeListeners = new Set<() => void>();
+let savedMode: Mode | null = null;
+function getMode(): Mode {
+  if (savedMode === null) {
+    try {
+      const v = localStorage.getItem(MODE_KEY);
+      savedMode = v === "tables" || v === "standings" ? v : "auto";
+    } catch {
+      savedMode = "auto";
+    }
+  }
+  return savedMode;
+}
+function saveMode(next: Mode) {
+  savedMode = next;
+  try {
+    localStorage.setItem(MODE_KEY, next);
+  } catch {}
+  modeListeners.forEach((l) => l());
+}
+function subscribeMode(listener: () => void) {
+  modeListeners.add(listener);
+  return () => {
+    modeListeners.delete(listener);
+  };
+}
 
 /**
  * The hall's TV/projector screen (light, in the app's palette). The server page refreshes the data every few seconds; this
@@ -50,7 +88,7 @@ type View = "tables" | "standings";
  * so a big field fits without anyone scrolling.
  */
 export function HallScreen({ data }: { data: HallData }) {
-  const { round, tables, standings } = data;
+  const { round, tables, standings, siteQr } = data;
   const finished = tables.filter((t) => t.state === "done" || t.state === "bye").length;
   const share = tables.length ? finished / tables.length : 0;
   const rotate = !!round?.live && share >= PAIRING_ONLY_BELOW && standings.length > 0;
@@ -62,15 +100,21 @@ export function HallScreen({ data }: { data: HallData }) {
   else if (!round.live) forcedView = "standings";
   else forcedView = rotate ? null : "tables";
 
+  const mode = useSyncExternalStore(subscribeMode, getMode, () => "auto" as Mode);
   const [rotating, setRotating] = useState<View>("tables");
-  const view: View = forcedView ?? rotating;
+  const view: View = mode === "auto" ? (forcedView ?? rotating) : mode;
   const [page, setPage] = useState(0);
+  function setMode(next: Mode) {
+    saveMode(next);
+    setPage(0);
+  }
   const stageRef = useRef<HTMLElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
   const [fit, setFit] = useState({ tiles: 12, rows: 10, twoCols: true });
 
   // Tables ↔ standings while a round is under way.
   useEffect(() => {
-    if (!rotate) return;
+    if (mode !== "auto" || !rotate) return;
     const t = setTimeout(
       () => {
         setRotating((v) => (v === "tables" ? "standings" : "tables"));
@@ -79,14 +123,15 @@ export function HallScreen({ data }: { data: HallData }) {
       rotating === "tables" ? TABLES_MS : STANDINGS_MS
     );
     return () => clearTimeout(t);
-  }, [rotate, rotating]);
+  }, [mode, rotate, rotating]);
 
   // How many tiles / rows fit on one screen.
   const measure = useCallback(() => {
     const el = stageRef.current;
     if (!el) return;
     const w = el.clientWidth;
-    const h = Math.max(240, window.innerHeight - el.getBoundingClientRect().top - 90);
+    const footer = footerRef.current?.offsetHeight ?? 90;
+    const h = Math.max(240, window.innerHeight - el.getBoundingClientRect().top - footer - 30);
     const tileW = Math.min(340, Math.max(230, window.innerWidth * 0.22)) + 14;
     const tileH = Math.min(124, Math.max(84, window.innerWidth * 0.09)) + 14;
     const twoCols = window.innerWidth >= 1080;
@@ -159,14 +204,16 @@ export function HallScreen({ data }: { data: HallData }) {
     };
     wake();
     window.addEventListener("pointermove", wake);
+    window.addEventListener("pointerdown", wake);
     return () => {
       clearTimeout(t);
       window.removeEventListener("pointermove", wake);
+      window.removeEventListener("pointerdown", wake);
     };
   }, []);
 
   const title = !round ? (
-    <>รอประกาศคู่ Round 1</>
+    view === "standings" ? <>อันดับ</> : <>รอประกาศคู่ Round 1</>
   ) : round.live ? (
     view === "tables" ? (
       <>
@@ -175,6 +222,10 @@ export function HallScreen({ data }: { data: HallData }) {
     ) : (
       <>อันดับปัจจุบัน</>
     )
+  ) : view === "tables" ? (
+    <>
+      Round {round.number} · <span className={s.phase}>ผลการแข่ง</span>
+    </>
   ) : data.tournamentDone ? (
     <>
       <span className={s.phase}>อันดับสุดท้าย</span>
@@ -218,9 +269,11 @@ export function HallScreen({ data }: { data: HallData }) {
         ) : view === "tables" ? (
           <div className={s.grid} key={`t${current}`}>
             {orderedTables.slice(current * perPage, current * perPage + perPage).map((t) => (
-              <TableTile key={t.id} t={t} showResult={!!round?.live} markPlaying={finished > 0} />
+              <TableTile key={t.id} t={t} showResult={!!round} markPlaying={finished > 0} />
             ))}
           </div>
+        ) : standings.length === 0 ? (
+          <p className={s.empty}>ยังไม่มีอันดับ</p>
         ) : (
           <StandingsBoard rows={standings.slice(current * perPage, current * perPage + perPage)} twoCols={fit.twoCols} key={`s${current}`} />
         )}
@@ -233,7 +286,7 @@ export function HallScreen({ data }: { data: HallData }) {
         )}
       </main>
 
-      <footer className={s.ticker}>
+      <footer className={s.ticker} ref={footerRef}>
         <span className={s.dot} />
         {round?.live ? (
           finished === 0 ? (
@@ -252,18 +305,41 @@ export function HallScreen({ data }: { data: HallData }) {
             เรียงตาม <b>แต้ม</b> แล้วตาม <b>ผลต่าง</b> · Round {(round?.number ?? 0) + 1} จะขึ้นเมื่อกรรมการยืนยันคู่
           </span>
         )}
-        <button
-          type="button"
-          className={s.fsButton}
-          onClick={async () => {
-            try {
-              if (document.fullscreenElement) await document.exitFullscreen();
-              else await document.documentElement.requestFullscreen();
-            } catch {}
-          }}
-        >
-          เต็มจอ
-        </button>
+        <div className={s.controls}>
+          <div className={s.modes} role="group" aria-label="เลือกสิ่งที่แสดงบนจอ">
+            {MODES.map((m) => (
+              <button
+                key={m.mode}
+                type="button"
+                aria-pressed={mode === m.mode}
+                className={mode === m.mode ? s.modeOn : ""}
+                onClick={() => setMode(m.mode)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className={s.fsButton}
+            onClick={async () => {
+              try {
+                if (document.fullscreenElement) await document.exitFullscreen();
+                else await document.documentElement.requestFullscreen();
+              } catch {}
+            }}
+          >
+            เต็มจอ
+          </button>
+        </div>
+        <div className={s.siteQr}>
+          <span>
+            สแกนดูผลและอันดับ
+            <b>{siteQr.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</b>
+          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- data: URI, next/image can't optimize it anyway */}
+          <img src={siteQr.dataUrl} alt={`QR code for ${siteQr.url}`} />
+        </div>
       </footer>
     </div>
   );

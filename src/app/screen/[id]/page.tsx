@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import QRCode from "qrcode";
 import { prisma } from "@/lib/prisma";
 import { getScoreboardView } from "@/lib/scoreboard";
 import { hasPracticeAccess } from "@/lib/practice-lock";
@@ -8,6 +9,9 @@ import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { HallScreen, type HallTable } from "@/components/screen/HallScreen";
 
 export const metadata: Metadata = { title: "จอห้องแข่ง · Score A-Math" };
+
+// The public site people in the hall scan into from the screen's corner QR.
+const SITE_URL = "https://score-amath.vercel.app/";
 
 /**
  * The hall's big screen (TV/projector): who plays at which table, live results, standings.
@@ -36,7 +40,7 @@ export default async function HallScreenPage(props: PageProps<"/screen/[id]">) {
     );
   }
 
-  const [round, scoreboard] = await Promise.all([
+  const [round, scoreboard, siteQrDataUrl] = await Promise.all([
     prisma.round.findFirst({
       where: { tournamentId: id, status: { in: ["CONFIRMED", "COMPLETED"] } },
       orderBy: { roundNumber: "desc" },
@@ -51,6 +55,7 @@ export default async function HallScreenPage(props: PageProps<"/screen/[id]">) {
       },
     }),
     getScoreboardView(id),
+    QRCode.toDataURL(SITE_URL, { width: 256, margin: 1 }),
   ]);
 
   const tables: HallTable[] = (round?.matches ?? [])
@@ -80,6 +85,7 @@ export default async function HallScreenPage(props: PageProps<"/screen/[id]">) {
           tournamentDone: tournament.status === "COMPLETED",
           round: round ? { number: round.roundNumber, live: round.status === "CONFIRMED" } : null,
           tables,
+          siteQr: { url: SITE_URL, dataUrl: siteQrDataUrl },
           // Split by group: each group's table in turn, ranked within the group.
           standings: scoreboard.sections
             .flatMap((section) => section.rows)

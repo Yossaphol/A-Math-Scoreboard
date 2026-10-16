@@ -90,9 +90,18 @@
 .ticker { margin: 0 calc(-1 * clamp(16px, 2.4vw, 40px)); border-top: 1px solid var(--line); background: var(--panel); padding: clamp(10px, 1vw, 14px) clamp(16px, 2.4vw, 40px) calc(clamp(10px, 1vw, 14px) + env(safe-area-inset-bottom, 0px)); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; font-size: clamp(13px, 1.15vw, 18px); color: var(--muted); }
 .ticker b { color: var(--fg); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
-.fsButton { margin-left: auto; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; transition: opacity 0.3s; }
+/* Admin's controls: fade out when the mouse rests, so the TV shows only the board. */
+.controls { margin-left: auto; display: flex; align-items: center; gap: 10px; transition: opacity 0.3s; }
+.idle .controls { opacity: 0; }
+.modes { display: flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.modes button { border: 0; background: transparent; color: var(--muted); border-radius: 7px; padding: 4px 12px; font-size: 13px; cursor: pointer; }
+.modes button:hover { color: var(--fg); }
+.modes .modeOn { background: var(--panel); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1); }
+.fsButton { border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
 .fsButton:hover { color: var(--fg); }
-.idle .fsButton { opacity: 0; }
+.siteQr { display: flex; align-items: center; gap: 12px; text-align: right; font-size: clamp(12px, 1vw, 15px); line-height: 1.35; }
+.siteQr b { display: block; font-size: clamp(13px, 1.1vw, 17px); }
+.siteQr img { width: clamp(72px, 6.5vw, 120px); height: auto; aspect-ratio: 1; border-radius: 8px; }
 
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes fill { from { width: 0; } to { width: 100%; } }
@@ -101,6 +110,8 @@
   .clock { text-align: left; }
   .row, .headRow { grid-template-columns: 40px minmax(0, 1fr) 2.6em 5em; }
   .wtl, .headRow span:nth-child(4) { display: none; }
+  .controls { margin-left: 0; }
+  .siteQr { margin-left: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .grid, .board { animation: none; }
