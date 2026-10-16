@@ -119,7 +119,7 @@ export default async function AdminProtectedLayout({
       {/* z-30: the sidebar is its own stacking layer (sticky + backdrop blur), so without it the
           page content paints over the notification panel that opens out of it. */}
       <aside className="relative z-30 flex shrink-0 flex-col border-b border-neutral-200/70 bg-white/70 backdrop-blur-md md:sticky md:top-0 md:h-screen md:w-60 md:border-b-0 md:border-r">
-        <div className="flex items-center justify-between gap-3 px-4 py-3 md:pb-0 md:pt-4">
+        <div className="relative flex items-center justify-between gap-3 px-4 py-3 md:pb-0 md:pt-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-neutral-900">Score A-Math</p>
             <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-neutral-500">

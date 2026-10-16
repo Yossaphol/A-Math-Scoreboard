@@ -35,8 +35,10 @@ export function NotificationBell({
   // Stored notifications for this account (Staff invites, replies) — shown above this
   // device's alert history.
   inbox?: { items: InboxItem[]; unread: number };
-  // Which edge the panel lines up with — "left" where the bell sits near the left of the
-  // screen (the admin sidebar), so the panel doesn't run off it.
+  // Which edge the panel lines up with — "left": the bell's own left edge, where it sits near
+  // the left of the screen (the admin sidebar). "right": the right gutter of the nearest
+  // positioned parent (the phone header row), so buttons beside the bell can't push the panel
+  // off the left of the screen.
   align?: "left" | "right";
   // Where this device's sound/popup switches live (Admin/Staff only).
   settingsHref?: string;
@@ -72,7 +74,7 @@ export function NotificationBell({
 
   return (
     <div className={className}>
-      <div ref={ref} className="relative">
+      <div ref={ref} className={align === "left" ? "relative" : undefined}>
         <button
           type="button"
           onClick={toggle}
@@ -98,7 +100,7 @@ export function NotificationBell({
 
         {open && (
           <div
-            className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full z-50 mt-2 w-[min(340px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_-12px_rgba(16,24,40,0.25),0_2px_6px_rgba(16,24,40,0.06)] ring-1 ring-black/[0.05]`}
+            className={`absolute ${align === "left" ? "left-0 mt-2" : "right-4"} top-full z-50 w-[min(340px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_-12px_rgba(16,24,40,0.25),0_2px_6px_rgba(16,24,40,0.06)] ring-1 ring-black/[0.05]`}
           >
             <div className="flex items-center justify-between border-b border-neutral-200/70 px-4 py-3">
               <p className="text-sm font-semibold text-neutral-900">การแจ้งเตือน</p>
