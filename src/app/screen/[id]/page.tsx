@@ -89,7 +89,7 @@ export default async function HallScreenPage(props: PageProps<"/screen/[id]">) {
           // Split by group: each group's table in turn, ranked within the group.
           standings: scoreboard.sections
             .flatMap((section) => section.rows)
-            .filter((r) => r.status === "ACTIVE")
+            .flatMap((r) => (r.rank == null ? [] : [{ ...r, rank: r.rank }]))
             .map((r) => ({
               rank: r.rank,
               group: scoreboard.split ? (r.groupName ?? "ไม่มีกลุ่ม") : null,

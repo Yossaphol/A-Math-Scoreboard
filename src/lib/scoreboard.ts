@@ -5,7 +5,7 @@ import { getMaxScoreConfig } from "@/lib/match/max-score-config";
 import { BYE_SCORE } from "@/lib/match/bye";
 
 export type ScoreboardRow = {
-  rank: number;
+  rank: number | null; // null: Withdrawn — listed last, unranked
   tournamentPlayerId: string;
   tournamentPlayerNo: number;
   globalPlayerId: number;
@@ -124,21 +124,26 @@ export async function getScoreboard(tournamentId: string): Promise<ScoreboardRow
 
 /**
  * Sorts by Points, then Diff, and numbers the ranks — on whatever subset it's given, so the
- * same rule ranks the whole field or a single group. Returns new row objects.
+ * same rule ranks the whole field or a single group. Withdrawn players go last, unranked.
+ * Returns new row objects.
  */
 export function rankRows(rows: ScoreboardRow[]): ScoreboardRow[] {
-  const sorted = rows
-    .map((r) => ({ ...r }))
-    .sort((a, b) => b.points - a.points || b.cumulativeDiff - a.cumulativeDiff);
+  const byStanding = (a: ScoreboardRow, b: ScoreboardRow) =>
+    b.points - a.points || b.cumulativeDiff - a.cumulativeDiff;
+  const active = rows.filter((r) => r.status !== "WITHDRAWN").map((r) => ({ ...r })).sort(byStanding);
+  const withdrawn = rows
+    .filter((r) => r.status === "WITHDRAWN")
+    .map((r) => ({ ...r, rank: null }))
+    .sort(byStanding);
   // "#" is the standing rank, not the fixed Tournament Player No (shown next to the name
   // instead). Players level on both points and Diff share a rank (1, 2, 2, 4) rather than
   // being split by an order the scoring rules don't define.
-  sorted.forEach((row, i) => {
-    const prev = sorted[i - 1];
+  active.forEach((row, i) => {
+    const prev = active[i - 1];
     row.rank =
       prev && prev.points === row.points && prev.cumulativeDiff === row.cumulativeDiff ? prev.rank : i + 1;
   });
-  return sorted;
+  return [...active, ...withdrawn];
 }
 
 export type ScoreboardSection = {

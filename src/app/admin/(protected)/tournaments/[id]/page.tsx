@@ -173,7 +173,7 @@ function StandingsTable({
                   r.gamesPlayed === 0 || r.status === "WITHDRAWN" ? "text-neutral-400" : ""
                 }`}
               >
-                <td className="py-3 pl-5 pr-3 text-neutral-500">{r.rank}</td>
+                <td className="py-3 pl-5 pr-3 text-neutral-500">{r.rank ?? "–"}</td>
                 <td className="py-3 pr-3">
                   {r.name}
                   <span className="ml-1 text-neutral-400">(#{r.tournamentPlayerNo})</span>

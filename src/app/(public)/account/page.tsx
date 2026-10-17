@@ -84,7 +84,7 @@ export default async function AccountPage(props: PageProps<"/account">) {
       .map(async (tp) => {
         const rows = await getScoreboard(tp.tournamentId);
         const mine = rows.find((r) => r.tournamentPlayerId === tp.id);
-        if (mine) rankByTournamentId.set(tp.tournamentId, mine.rank);
+        if (mine?.rank != null) rankByTournamentId.set(tp.tournamentId, mine.rank);
       })
   );
 

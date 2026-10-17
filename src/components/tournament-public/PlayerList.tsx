@@ -49,7 +49,7 @@ export async function PlayerList({ tournamentId, query }: { tournamentId: string
             <tbody>
               {players.map((p) => (
                 <tr key={p.tournamentPlayerId} className="border-b border-neutral-100 last:border-0">
-                  <td className="py-3 pl-5 pr-3 text-neutral-500">{p.rank}</td>
+                  <td className="py-3 pl-5 pr-3 text-neutral-500">{p.rank ?? "–"}</td>
                   <td className="py-3 pr-3">
                     <p className="font-medium">
                       {p.name}

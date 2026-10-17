@@ -69,7 +69,7 @@ function RankTable({ rows, showGroup }: { rows: ScoreboardRow[]; showGroup: bool
             {rows.map((r) => (
               <tr key={r.tournamentPlayerId} className="border-b border-neutral-100 last:border-0">
                 <td className="sticky left-0 z-10 max-w-[220px] truncate bg-white py-4 pl-5 pr-4">
-                  <span className="inline-block w-5 text-neutral-400">{r.rank}</span>
+                  <span className="inline-block w-5 text-neutral-400">{r.rank ?? "–"}</span>
                   <span className="font-medium text-neutral-900">{r.name}</span>
                   <span className="ml-1 text-xs text-neutral-400">(#{r.tournamentPlayerNo})</span>
                   {showGroup && r.groupName && (
