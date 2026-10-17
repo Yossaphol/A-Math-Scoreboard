@@ -54,7 +54,7 @@ function RankTable({ rows, showGroup }: { rows: ScoreboardRow[]; showGroup: bool
   return (
     <div className="relative">
       <Card padding="p-0" className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-[520px] text-sm">
           <thead>
             <tr className="border-b border-neutral-200/70 text-left text-xs text-neutral-500">
               <th className="sticky left-0 z-10 max-w-[220px] bg-white py-4 pl-5 pr-4">ผู้เล่น</th>
@@ -62,9 +62,7 @@ function RankTable({ rows, showGroup }: { rows: ScoreboardRow[]; showGroup: bool
               <th className="px-4 py-4 text-center">W</th>
               <th className="px-4 py-4 text-center">T</th>
               <th className="px-4 py-4 text-center">L</th>
-              <th className="px-4 py-4 text-right">คะแนนที่ทำได้</th>
-              <th className="px-4 py-4 text-right">คะแนนคู่ต่อสู้</th>
-              <th className="py-4 pl-4 pr-5 text-right">Diff</th>
+              <th className="py-4 pl-4 pr-5 text-right">ผลต่างสะสม</th>
             </tr>
           </thead>
           <tbody>
@@ -89,8 +87,6 @@ function RankTable({ rows, showGroup }: { rows: ScoreboardRow[]; showGroup: bool
                 <td className="px-4 py-4 text-center text-neutral-600">{r.wins}</td>
                 <td className="px-4 py-4 text-center text-neutral-600">{r.ties}</td>
                 <td className="px-4 py-4 text-center text-neutral-600">{r.losses}</td>
-                <td className="px-4 py-4 text-right text-neutral-600">{r.ownScoreTotal}</td>
-                <td className="px-4 py-4 text-right text-neutral-600">{r.opponentScoreTotal}</td>
                 <td className="py-4 pl-4 pr-5 text-right font-medium text-neutral-900">
                   {r.cumulativeDiff > 0 ? `+${r.cumulativeDiff}` : r.cumulativeDiff}
                 </td>
