@@ -1,4 +1,5 @@
 import { getScoreboardView, type ScoreboardRow } from "@/lib/scoreboard";
+import { getSystemSettings } from "@/lib/system-settings";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -16,7 +17,8 @@ export async function ScoreboardTable({
   basePath: string;
   groupFilter: string | null;
 }) {
-  const view = await getScoreboardView(tournamentId, groupFilter, { hideWithdrawn: true });
+  const { showWithdrawnPublic } = await getSystemSettings();
+  const view = await getScoreboardView(tournamentId, groupFilter, { hideWithdrawn: !showWithdrawnPublic });
 
   if (view.rows.length === 0) return <EmptyState title="ยังไม่มีผู้เล่น" />;
 
@@ -75,6 +77,11 @@ function RankTable({ rows, showGroup }: { rows: ScoreboardRow[]; showGroup: bool
                   {showGroup && r.groupName && (
                     <Badge variant="neutral" className="ml-2">
                       {r.groupName}
+                    </Badge>
+                  )}
+                  {r.status === "WITHDRAWN" && (
+                    <Badge variant="neutral" className="ml-2">
+                      Withdrawn
                     </Badge>
                   )}
                 </td>

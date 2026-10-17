@@ -4,12 +4,20 @@ import { prisma } from "@/lib/prisma";
 
 const SETTINGS_ID = 1;
 
-export type SystemSettings = { liveFeedEnabled: boolean };
+export type SystemSettings = {
+  liveFeedEnabled: boolean;
+  showWithdrawnAdmin: boolean;
+  showWithdrawnPublic: boolean;
+};
 
 /** System-wide switches (/admin/settings). No row yet = every default (feed on). */
 export async function readSystemSettings(): Promise<SystemSettings> {
   const row = await prisma.systemSetting.findUnique({ where: { id: SETTINGS_ID } });
-  return { liveFeedEnabled: row?.liveFeedEnabled ?? true };
+  return {
+    liveFeedEnabled: row?.liveFeedEnabled ?? true,
+    showWithdrawnAdmin: row?.showWithdrawnAdmin ?? true,
+    showWithdrawnPublic: row?.showWithdrawnPublic ?? false,
+  };
 }
 
 /** Same, read once per request — for pages and layouts. Long-lived streams use readSystemSettings. */

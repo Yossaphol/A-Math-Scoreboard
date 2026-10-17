@@ -3,14 +3,14 @@ import { getSystemSettings } from "@/lib/system-settings";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { DeviceSettings, LiveFeedSetting } from "@/components/admin/SettingsControls";
+import { DeviceSettings, LiveFeedSetting, WithdrawnSettings } from "@/components/admin/SettingsControls";
 
 // Two scopes, kept visibly apart so nobody flips a system switch thinking it's just theirs:
 // "เครื่องนี้" (this browser only — Admin and Staff) and "ทั้งระบบ" (every screen — Admin only).
 export default async function SettingsPage() {
   const user = await requireStaffOrAdmin();
   const isAdmin = user.role === "ADMIN";
-  const { liveFeedEnabled } = await getSystemSettings();
+  const { liveFeedEnabled, showWithdrawnAdmin, showWithdrawnPublic } = await getSystemSettings();
 
   return (
     <div className="max-w-2xl">
@@ -27,6 +27,7 @@ export default async function SettingsPage() {
           badge={<Badge variant="neutral">Admin</Badge>}
         >
           <LiveFeedSetting enabled={liveFeedEnabled} />
+          <WithdrawnSettings showAdmin={showWithdrawnAdmin} showPublic={showWithdrawnPublic} />
         </SettingsSection>
       )}
     </div>

@@ -153,7 +153,8 @@ export type ScoreboardSection = {
 };
 
 export type ScoreboardView = {
-  rows: ScoreboardRow[]; // everyone, overall rank
+  rows: ScoreboardRow[]; // everyone shown (see hideWithdrawn), overall rank
+  allRows: ScoreboardRow[]; // everyone, Withdrawn included — for per-player stats lookups
   groups: { id: string; name: string; playerCount: number }[];
   // The latest Round paired within groups — show one table per group until a Round doesn't.
   split: boolean;
@@ -169,7 +170,8 @@ export type ScoreboardView = {
  * `tabsOnly` (the admin Scoreboard): never stack one table per group — always one table,
  * everyone or the `groupFilter` group, whether or not the latest Round is split.
  *
- * `hideWithdrawn` (the public pages): leave Withdrawn players out entirely.
+ * `hideWithdrawn`: leave Withdrawn players out of the tables and counts (the
+ * showWithdrawnAdmin / showWithdrawnPublic settings).
  */
 export async function getScoreboardView(
   tournamentId: string,
@@ -204,5 +206,5 @@ export async function getScoreboardView(
       ? [{ group: filtered, rows: rankRows(rows.filter((r) => r.groupId === filtered.id)) }]
       : [{ group: null, rows }];
   }
-  return { rows, groups, split, sections };
+  return { rows, allRows, groups, split, sections };
 }

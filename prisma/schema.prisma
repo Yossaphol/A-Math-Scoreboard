@@ -499,9 +499,12 @@ model UserNotification {
 // System-wide switches an Admin flips at /admin/settings (src/lib/system-settings.ts). One row,
 // id 1, created on first save — until then every field reads as its default.
 model SystemSetting {
-  id              Int      @id @default(1)
+  id                  Int      @id @default(1)
   // The Admin/Staff live feed (src/app/api/referee-calls/stream): referee calls, table
   // results and "who's online". Off: no screen streams, and table pages hide "เรียกกรรมการ".
-  liveFeedEnabled Boolean  @default(true)
-  updatedAt       DateTime @updatedAt
+  liveFeedEnabled     Boolean  @default(true)
+  // Withdrawn players on the Scoreboard / player list: Admin pages vs the public site.
+  showWithdrawnAdmin  Boolean  @default(true)
+  showWithdrawnPublic Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
 }

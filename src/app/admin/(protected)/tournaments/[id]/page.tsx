@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getScoreboardView, type ScoreboardRow } from "@/lib/scoreboard";
+import { getSystemSettings } from "@/lib/system-settings";
 import { getFirstSecondScores } from "@/lib/pairing/first-second";
 import { startPairing, confirmPairing, cancelPreview } from "@/lib/actions/pairing";
 import { AutoRefresh } from "@/components/ui/AutoRefresh";
@@ -40,9 +41,10 @@ export default async function TournamentOverviewPage(props: PageProps<"/admin/to
   });
 
   // Always one table here, switched by group tabs — even while a Round is split.
-  const view = await getScoreboardView(id, groupFilter, { tabsOnly: true });
+  const { showWithdrawnAdmin } = await getSystemSettings();
+  const view = await getScoreboardView(id, groupFilter, { tabsOnly: true, hideWithdrawn: !showWithdrawnAdmin });
   const rows = view.rows;
-  const statsByPlayer = new Map(rows.map((r) => [r.tournamentPlayerId, r]));
+  const statsByPlayer = new Map(view.allRows.map((r) => [r.tournamentPlayerId, r]));
   const firstSecondScores = tournament.useFirstSecond
     ? await getFirstSecondScores(id)
     : null;

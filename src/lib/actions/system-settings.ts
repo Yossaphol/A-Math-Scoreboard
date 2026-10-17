@@ -22,3 +22,21 @@ export async function setLiveFeedEnabled(formData: FormData) {
   // Every layout reads the switch (admin shell, public site, table pages).
   revalidatePath("/", "layout");
 }
+
+export async function setShowWithdrawn(formData: FormData) {
+  const admin = await assertAdmin();
+  const scope = formData.get("scope") === "public" ? "public" : "admin";
+  const show = formData.get("show") === "1";
+  const where = scope === "public" ? "หน้า User" : "หน้า Admin";
+
+  await saveSystemSettings(scope === "public" ? { showWithdrawnPublic: show } : { showWithdrawnAdmin: show });
+  await logAdminAction({
+    actorId: admin.id,
+    action: `settings.withdrawn_${scope}_${show ? "shown" : "hidden"}`,
+    summary: `${show ? "แสดง" : "ซ่อน"}ผู้เล่นที่ถอนตัวใน${where}`,
+    targetType: "SystemSetting",
+  });
+  await setFlash({ type: "success", title: `${show ? "แสดง" : "ซ่อน"}ผู้เล่นที่ถอนตัวใน${where}แล้ว` });
+
+  revalidatePath("/", "layout");
+}

@@ -10,7 +10,7 @@ import {
   useResultPopupsHidden,
 } from "@/components/ui/alerts/device-prefs";
 import { playAlertChime, unlockAudio } from "@/components/ui/alerts/sound";
-import { setLiveFeedEnabled } from "@/lib/actions/system-settings";
+import { setLiveFeedEnabled, setShowWithdrawn } from "@/lib/actions/system-settings";
 
 /** "เครื่องนี้" rows — saved in this browser right away, no Save button. */
 export function DeviceSettings({ liveFeedEnabled }: { liveFeedEnabled: boolean }) {
@@ -138,6 +138,52 @@ export function LiveFeedSetting({ enabled }: { enabled: boolean }) {
         </div>
       )}
     </SettingRow>
+  );
+}
+
+/** Withdrawn players on the Scoreboard / player list — Admin pages and the public site apart. */
+export function WithdrawnSettings({ showAdmin, showPublic }: { showAdmin: boolean; showPublic: boolean }) {
+  const [pending, startTransition] = useTransition();
+
+  function save(scope: "admin" | "public", show: boolean) {
+    const fd = new FormData();
+    fd.set("scope", scope);
+    fd.set("show", show ? "1" : "0");
+    startTransition(() => setShowWithdrawn(fd));
+  }
+
+  return (
+    <>
+      <SettingRow>
+        <Switch
+          label="แสดงผู้เล่นที่ถอนตัว ในหน้า Admin"
+          checked={showAdmin}
+          disabled={pending}
+          onChange={(on) => save("admin", on)}
+          description={
+            showAdmin
+              ? "แสดงท้ายตาราง Scoreboard พร้อมป้าย Withdrawn ไม่นับอันดับ"
+              : "ไม่แสดงในตาราง Scoreboard ของหน้า Tournament"
+          }
+        />
+      </SettingRow>
+      <SettingRow>
+        <Switch
+          label="แสดงผู้เล่นที่ถอนตัว ในหน้า User"
+          checked={showPublic}
+          disabled={pending}
+          onChange={(on) => save("public", on)}
+          description={
+            <>
+              {showPublic
+                ? "แสดงท้ายตาราง Scoreboard และรายชื่อผู้เล่น พร้อมป้าย Withdrawn ไม่นับอันดับ"
+                : "ไม่แสดงใน Scoreboard และรายชื่อผู้เล่นที่ผู้ชมเห็น"}
+              <span className="block text-neutral-400">จอห้องแข่งไม่แสดงผู้เล่นที่ถอนตัวเสมอ</span>
+            </>
+          }
+        />
+      </SettingRow>
+    </>
   );
 }
 

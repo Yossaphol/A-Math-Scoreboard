@@ -1,11 +1,14 @@
 import { getScoreboard } from "@/lib/scoreboard";
+import { getSystemSettings } from "@/lib/system-settings";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { inputClass } from "@/components/ui/styles";
 
 /** Shared body of the /t/[id]/players and /practice/[id]/players pages. */
 export async function PlayerList({ tournamentId, query }: { tournamentId: string; query: string }) {
-  const rows = (await getScoreboard(tournamentId)).filter((r) => r.status !== "WITHDRAWN");
+  const [allRows, { showWithdrawnPublic }] = await Promise.all([getScoreboard(tournamentId), getSystemSettings()]);
+  const rows = showWithdrawnPublic ? allRows : allRows.filter((r) => r.status !== "WITHDRAWN");
   const queryLower = query.toLowerCase();
   const queryAsNumber = Number(query);
   const players = query
@@ -57,6 +60,11 @@ export async function PlayerList({ tournamentId, query }: { tournamentId: string
                       </span>
                     </p>
                     {p.nickname && <p className="text-xs text-neutral-500">{p.nickname}</p>}
+                    {p.status === "WITHDRAWN" && (
+                      <Badge variant="neutral" className="mt-1">
+                        Withdrawn
+                      </Badge>
+                    )}
                   </td>
                   <td className="py-3 pr-3 text-right tabular-nums text-neutral-600">{p.gamesPlayed}</td>
                   <td className="py-3 pr-3 text-right font-medium">{p.points}</td>
