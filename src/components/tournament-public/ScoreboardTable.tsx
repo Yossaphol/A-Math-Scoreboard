@@ -16,7 +16,7 @@ export async function ScoreboardTable({
   basePath: string;
   groupFilter: string | null;
 }) {
-  const view = await getScoreboardView(tournamentId, groupFilter);
+  const view = await getScoreboardView(tournamentId, groupFilter, { hideWithdrawn: true });
 
   if (view.rows.length === 0) return <EmptyState title="ยังไม่มีผู้เล่น" />;
 
@@ -75,11 +75,6 @@ function RankTable({ rows, showGroup }: { rows: ScoreboardRow[]; showGroup: bool
                   {showGroup && r.groupName && (
                     <Badge variant="neutral" className="ml-2">
                       {r.groupName}
-                    </Badge>
-                  )}
-                  {r.status === "WITHDRAWN" && (
-                    <Badge variant="neutral" className="ml-2">
-                      Withdrawn
                     </Badge>
                   )}
                 </td>

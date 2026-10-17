@@ -168,13 +168,15 @@ export type ScoreboardView = {
  *
  * `tabsOnly` (the admin Scoreboard): never stack one table per group — always one table,
  * everyone or the `groupFilter` group, whether or not the latest Round is split.
+ *
+ * `hideWithdrawn` (the public pages): leave Withdrawn players out entirely.
  */
 export async function getScoreboardView(
   tournamentId: string,
   groupFilter?: string | null,
-  { tabsOnly = false }: { tabsOnly?: boolean } = {}
+  { tabsOnly = false, hideWithdrawn = false }: { tabsOnly?: boolean; hideWithdrawn?: boolean } = {}
 ): Promise<ScoreboardView> {
-  const [rows, groupList, latestRound] = await Promise.all([
+  const [allRows, groupList, latestRound] = await Promise.all([
     getScoreboard(tournamentId),
     prisma.tournamentGroup.findMany({
       where: { tournamentId },
@@ -187,6 +189,7 @@ export async function getScoreboardView(
       select: { splitByGroup: true },
     }),
   ]);
+  const rows = hideWithdrawn ? allRows.filter((r) => r.status !== "WITHDRAWN") : allRows;
   const groups = groupList.map((g) => ({ ...g, playerCount: rows.filter((r) => r.groupId === g.id).length }));
   const split = groups.length > 0 && !!latestRound?.splitByGroup;
 
